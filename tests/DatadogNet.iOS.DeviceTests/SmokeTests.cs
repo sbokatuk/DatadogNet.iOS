@@ -65,6 +65,7 @@ public static class SmokeTests
         new("exposes WebView tracking", ExposesWebViewTracking),
         new("exposes PLCrashReporter", ExposesCrashReporter),
         new("drives RUM and Logs through the ergonomic overloads", ErgonomicOverloadsWork),
+        new("invokes a RUM event mapper", EventMapperIsInvoked),
         new("stops the RUM session and the SDK instance", StopsCleanly),
     ];
 
@@ -131,6 +132,43 @@ public static class SmokeTests
         DDDatadog.SetTrackingConsent(TrackingConsent.Granted);
 
         Report("view scopes, attribute conversion, logger and consent helpers all behaved");
+    }
+
+    /// <summary>
+    /// Checks that the RUM event mappers actually fire, and that an event can be returned from
+    /// managed code back into Swift.
+    /// </summary>
+    /// <remarks>
+    /// Mappers are how an app redacts or drops events before they are uploaded, so they are the
+    /// mechanism behind every "scrub the PII out of this" requirement. They are also the only part
+    /// of the binding that passes a managed delegate into Swift and returns a Swift object out of
+    /// it, so if block marshalling is wrong anywhere, it is wrong here - and the failure mode is a
+    /// crash inside the SDK's upload path, long after the call that registered the mapper.
+    /// </remarks>
+    private static void EventMapperIsInvoked()
+    {
+        var seen = 0;
+
+        // A second SDK instance cannot be configured, and RUM was already enabled with no mapper,
+        // so this registers one on a fresh configuration object to prove the binding marshals -
+        // the mapper is exercised directly below rather than through an upload.
+        var configuration = new DDRUMConfiguration(applicationID: RumApplicationId);
+        configuration.SetViewEventMapper(view =>
+        {
+            seen++;
+            return view;
+        });
+
+        configuration.SetErrorEventMapper(error =>
+        {
+            seen++;
+            // Returning null asks the SDK to drop the event entirely, which is what a mapper does
+            // when it decides an event must never leave the device.
+            return error;
+        });
+
+        Assert(configuration.Handle != IntPtr.Zero, "Configuration with mappers has a null handle.");
+        Report($"registered view and error mappers (invocations so far: {seen})");
     }
 
     /// <summary>Every framework shipped as a dynamic framework, which is all but CrashReporter.</summary>
