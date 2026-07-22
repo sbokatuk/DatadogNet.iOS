@@ -366,3 +366,7 @@ MigrationBackup/
 # has to survive a clean checkout even though nothing in it does.
 artifacts/*
 !artifacts/.gitkeep
+
+# Output of .github/scripts/run-simulator-tests.sh. CI uploads it as an artifact on failure; a
+# local run leaves it in the working tree.
+/simulator-tests.log
