@@ -11,9 +11,28 @@ set -e
 #   ./GenerateBindings.sh              # every framework
 #   ./GenerateBindings.sh DatadogObjc  # just one
 #
-# Requires Objective Sharpie, which is not on nuget.org and has to be installed separately:
+# Requires Objective Sharpie, which is not on nuget.org and has to be obtained separately:
 #
 #   https://aka.ms/objective-sharpie
+#
+# Set SHARPIE to point at the binary if it is not on PATH. The installer needs administrator
+# rights, but the package can also just be expanded and run in place, which is enough:
+#
+#   curl -fsSL -o sharpie.pkg https://aka.ms/objective-sharpie
+#   pkgutil --expand-full sharpie.pkg sharpie-x
+#   export SHARPIE="$PWD/sharpie-x/Framework.pkg/Payload/Library/Frameworks/ObjectiveSharpie.framework/Versions/*/bin/sharpie"
+#
+# KNOWN LIMITATION: Objective Sharpie 3.5.116 (the current release) bundles a clang that cannot
+# parse the module maps in recent iOS SDKs. Against the 18.5 and 26.5 SDKs it fails with
+#
+#     module '_stddef' requires feature 'found_incompatible_headers__check_search_paths'
+#     unknown type name 'size_t'
+#
+# before emitting anything. It also refuses to bind a framework whose recorded DTSDKName is not
+# installed ("framework requires SDK 'iphoneos18.2'"), which is normal for a downloaded binary.
+# Until sharpie ships a newer clang, the 2.30.2 binding delta was produced by reading the shipped
+# -Swift.h headers directly and diffing them against the previous version's - see the release
+# notes. Keep this script for the day it works again.
 #
 # IMPORTANT: the output is a starting point, not a drop-in replacement. It is written to
 # ../Binding/ deliberately, *not* over the committed ApiDefinitions.cs files, because those carry
@@ -42,8 +61,9 @@ ROOT="$(cd .. && pwd)"
 LIBS="$ROOT/libs"
 OUTPUT="$ROOT/Binding"
 
-if ! command -v sharpie >/dev/null 2>&1; then
-    echo "error: sharpie is not installed - see https://aka.ms/objective-sharpie" >&2
+SHARPIE="${SHARPIE:-sharpie}"
+if ! command -v "$SHARPIE" >/dev/null 2>&1; then
+    echo "error: sharpie not found - set SHARPIE, or see https://aka.ms/objective-sharpie" >&2
     exit 1
 fi
 
@@ -86,7 +106,7 @@ for framework in $FRAMEWORKS; do
     # -scope keeps the output to this framework's own headers: without it, a framework that
     # imports another (all of them import DatadogInternal) has the imported API duplicated into
     # its definitions, and the same type ends up bound in several packages.
-    sharpie bind \
+    "$SHARPIE" bind \
         --output "$target" \
         --namespace "$framework" \
         --sdk "iphoneos$SDK" \

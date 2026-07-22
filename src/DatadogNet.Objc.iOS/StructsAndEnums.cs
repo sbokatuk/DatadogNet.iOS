@@ -938,13 +938,6 @@ namespace DatadogObjc
 		Critical = 4
 	}
 
-	[Native]
-	public enum DDSessionReplayConfigurationPrivacyLevel : long
-	{
-		Allow = 0,
-		Mask = 1,
-		MaskUserInput = 2
-	}
 
 	[Native]
 	public enum DDTelemetryConfigurationEventSource : long
@@ -1032,5 +1025,173 @@ namespace DatadogObjc
 		Frequent = 0,
 		Average = 1,
 		Rare = 2
+	}
+
+	// The log-event model reached by DDLogsConfiguration.SetEventMapper. Objective Sharpie omitted
+	// the whole family, so the previous bindings had no way to inspect or redact a log before
+	// upload; these are transcribed from DatadogObjc-Swift.h.
+
+	[Native]
+	public enum DDLogEventStatus : long
+	{
+		Debug = 0,
+		Info = 1,
+		Notice = 2,
+		Warn = 3,
+		Error = 4,
+		Critical = 5,
+		Emergency = 6
+	}
+
+	[Native]
+	public enum DDLogEventReachability : long
+	{
+		Yes = 0,
+		Maybe = 1,
+		No = 2
+	}
+
+	[Native]
+	public enum DDLogEventRadioAccessTechnology : long
+	{
+		Gprs = 0,
+		Edge = 1,
+		Wcdma = 2,
+		Hsdpa = 3,
+		Hsupa = 4,
+		Cdma1x = 5,
+		CdmaEvdoRev0 = 6,
+		CdmaEvdoRevA = 7,
+		CdmaEvdoRevB = 8,
+		Ehrpd = 9,
+		Lte = 10,
+		Unknown = 11
+	}
+
+	/// <summary>Network interface kinds reported in <c>DDLogEventNetworkConnectionInfo.AvailableInterfaces</c>.</summary>
+	/// <remarks>
+	/// That property is an <c>NSNumber[]</c> because Objective-C has no typed enum arrays, so the
+	/// values only mean anything once cast to this.
+	/// </remarks>
+	[Native]
+	public enum DDLogEventInterface : long
+	{
+		Wifi = 0,
+		WiredEthernet = 1,
+		Cellular = 2,
+		Loopback = 3,
+		Other = 4
+	}
+
+	// ---------------------------------------------------------------------------------------
+	// Added by dd-sdk-ios 2.30.2. Mostly RUM event-model detail reached through the event
+	// mappers; DDCoreLoggerLevel belongs to the internal-telemetry logger added in 2.19.0.
+	// ---------------------------------------------------------------------------------------
+
+	[Native]
+	public enum DDCoreLoggerLevel : long
+	{
+		Debug = 0,
+		Warn = 1,
+		Error = 2,
+		Critical = 3
+	}
+
+	[Native]
+	public enum DDRUMActionEventDDActionNameSource : long
+	{
+		None = 0,
+		CustomAttribute = 1,
+		MaskPlaceholder = 2,
+		StandardAttribute = 3,
+		TextContent = 4,
+		MaskDisallowed = 5,
+		Blank = 6
+	}
+
+	[Native]
+	public enum DDRUMLongTaskEventDDProfilingErrorReason : long
+	{
+		None = 0,
+		NotSupportedByBrowser = 1,
+		FailedToLazyLoad = 2,
+		MissingDocumentPolicyHeader = 3,
+		UnexpectedException = 4
+	}
+
+	[Native]
+	public enum DDRUMLongTaskEventDDProfilingStatus : long
+	{
+		None = 0,
+		Starting = 1,
+		Running = 2,
+		Stopped = 3,
+		Error = 4
+	}
+
+	[Native]
+	public enum DDRUMResourceEventResourceDeliveryType : long
+	{
+		None = 0,
+		Cache = 1,
+		NavigationalPrefetch = 2,
+		Other = 3
+	}
+
+	[Native]
+	public enum DDRUMViewEventDDProfilingErrorReason : long
+	{
+		None = 0,
+		NotSupportedByBrowser = 1,
+		FailedToLazyLoad = 2,
+		MissingDocumentPolicyHeader = 3,
+		UnexpectedException = 4
+	}
+
+	[Native]
+	public enum DDRUMViewEventDDProfilingStatus : long
+	{
+		None = 0,
+		Starting = 1,
+		Running = 2,
+		Stopped = 3,
+		Error = 4
+	}
+
+	[Native]
+	public enum DDRUMVitalEventVitalFailureReason : long
+	{
+		None = 0,
+		Error = 1,
+		Abandoned = 2,
+		Other = 3
+	}
+
+	[Native]
+	public enum DDRUMVitalEventVitalStepType : long
+	{
+		None = 0,
+		Start = 1,
+		Update = 2,
+		Retry = 3,
+		End = 4
+	}
+
+	[Native]
+	public enum DDTelemetryConfigurationEventTelemetryConfigurationSessionPersistence : long
+	{
+		None = 0,
+		LocalStorage = 1,
+		Cookie = 2
+	}
+
+	[Native]
+	public enum DDTelemetryConfigurationEventTelemetryConfigurationTrackFeatureFlagsForEvents : long
+	{
+		None = 0,
+		Vital = 1,
+		Resource = 2,
+		Action = 3,
+		LongTask = 4
 	}
 }
