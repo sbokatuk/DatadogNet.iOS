@@ -1,19 +1,24 @@
+using System;
+using DatadogInternal;
 using Foundation;
+using ObjCRuntime;
 using WebKit;
 
 namespace DatadogWebViewTracking
 {
-	// @interface DDWebViewTracking : NSObject
+	// @interface DDWebViewTracking
 	[BaseType (typeof(NSObject))]
 	[DisableDefaultCtor]
 	interface DDWebViewTracking
 	{
-		// +(void)enableWithWebView:(WKWebView * _Nonnull)webView hosts:(NSSet<NSString *> * _Nonnull)hosts logsSampleRate:(float)logsSampleRate;
 		[Static]
 		[Export ("enableWithWebView:hosts:logsSampleRate:")]
 		void EnableWithWebView (WKWebView webView, NSSet<NSString> hosts, float logsSampleRate);
 
-		// +(void)disableWithWebView:(WKWebView * _Nonnull)webView;
+		[Static]
+		[Export ("enableWithWebView:instanceName:hosts:logsSampleRate:")]
+		void EnableWithWebView (WKWebView webView, [NullAllowed] string instanceName, NSSet<NSString> hosts, float logsSampleRate);
+
 		[Static]
 		[Export ("disableWithWebView:")]
 		void DisableWithWebView (WKWebView webView);

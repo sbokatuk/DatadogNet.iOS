@@ -1,36 +1,58 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    A dependency-only meta-package. It ships no assembly and no native payload.
+
+    Up to 2.30.2 this package bound the DatadogObjc framework, which was where Datadog projected
+    its whole Swift API into Objective-C. dd-sdk-ios 3.0 deleted that framework and moved the DD*
+    types into the product modules they belong to, so there is nothing left here to bind.
+
+    The id is kept, and made to depend on the modules DatadogObjc used to cover, so that an app
+    referencing DatadogNet.Objc.iOS still restores a working set after a version bump. It is not a
+    drop-in upgrade: the types moved namespace as well as package, so `using DatadogObjc;` has to
+    become `using DatadogRUM;`, `using DatadogLogs;` and so on. See the migration table in the
+    README.
+
+    New apps should reference the product modules directly and ignore this package.
+  -->
   <PropertyGroup>
-    <DatadogFramework>DatadogObjc</DatadogFramework>
-    <DatadogPackageName>Objc</DatadogPackageName>
-    <Description>.NET for iOS / .NET MAUI bindings for the Datadog iOS SDK's DatadogObjc framework - the package to install. Exposes the whole DD* API from C#: SDK configuration and lifecycle, RUM views/actions/resources/errors, Logs, Trace, Session Replay and tracing-header propagation, and pulls in every feature module it needs. Built against dd-sdk-ios $(DatadogNativeVersion). Add DatadogNet.CrashReporting.iOS for crash reporting and DatadogNet.WebViewTracking.iOS for hybrid apps.</Description>
-    <PackageTags>datadog;rum;logs;tracing;session-replay</PackageTags>
+    <DatadogSdkBand Condition=" '$(DatadogSdkBand)' == '' ">net9</DatadogSdkBand>
+    <TargetFrameworks Condition=" '$(DatadogSdkBand)' == 'net9' ">net8.0-ios18.0;net9.0-ios18.0</TargetFrameworks>
+    <TargetFrameworks Condition=" '$(DatadogSdkBand)' == 'net10' ">net10.0-ios26.0</TargetFrameworks>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <CheckEolWorkloads>false</CheckEolWorkloads>
+    <SupportedOSPlatformVersion>12.2</SupportedOSPlatformVersion>
+
+    <!-- No assembly of its own: the package is nothing but its dependency graph. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <!--
+      NU5128 fires because there are dependency groups for target frameworks with no lib/ folder.
+      That is exactly what a meta-package is.
+    -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>DatadogNet.Objc.iOS</PackageId>
+    <Title>Compatibility meta-package for apps upgrading from DatadogNet.Objc.iOS 2.x.</Title>
+    <Description>Dependency-only compatibility meta-package for the Datadog iOS SDK bindings. dd-sdk-ios 3.0 removed the DatadogObjc framework and moved its DD* types into the product modules, so this package now just pulls in DatadogNet.Core.iOS, DatadogNet.RUM.iOS, DatadogNet.Logs.iOS, DatadogNet.Trace.iOS and DatadogNet.SessionReplay.iOS. Namespaces changed with the move, so code needs updating - see the migration table in the README. New apps should reference the product modules directly.</Description>
+    <PackageTags>datadog;migration;meta-package;iOS;MAUI</PackageTags>
   </PropertyGroup>
 
-  <Import Project="../Datadog.Binding.props" />
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../../build/icon.png" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../../README.md" Pack="true" PackagePath="/" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../../LICENSE" Pack="true" PackagePath="licenses/" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../../licenses/Apache-2.0.txt" Pack="true" PackagePath="licenses/" Visible="false" />
+  </ItemGroup>
 
-  <!--
-    The façade: DatadogObjc is where Datadog's Swift API is projected into Objective-C, so this is
-    the only package that binds a substantial managed surface. Its dependencies are exactly the
-    frameworks its binary links, which is also the set an app needs to use any of the DD* types.
-
-    DatadogCrashReporting and DatadogWebViewTracking are deliberately not here. They are separate
-    opt-ins upstream, and neither is referenced by DatadogObjc's binary - pulling them in would
-    add ~3 MB and a crash handler to every app that only wanted RUM.
-
-    ProjectReference, not PackageReference: `dotnet pack` turns each one into a NuGet dependency on
-    the referenced package at the same version, so the published graph is identical either way -
-    but a PackageReference at $(Version) cannot restore until that version has been packed, which
-    makes a clean clone unbuildable and forces every local build through the packing script in
-    dependency order.
-  -->
+  <!-- The set DatadogObjc used to cover. CrashReporting and WebViewTracking were opt-in then too. -->
   <ItemGroup>
     <ProjectReference Include="../DatadogNet.Core.iOS/DatadogNet.Core.iOS.csproj" />
-    <ProjectReference Include="../DatadogNet.Internal.iOS/DatadogNet.Internal.iOS.csproj" />
-    <ProjectReference Include="../DatadogNet.Logs.iOS/DatadogNet.Logs.iOS.csproj" />
     <ProjectReference Include="../DatadogNet.RUM.iOS/DatadogNet.RUM.iOS.csproj" />
-    <ProjectReference Include="../DatadogNet.SessionReplay.iOS/DatadogNet.SessionReplay.iOS.csproj" />
+    <ProjectReference Include="../DatadogNet.Logs.iOS/DatadogNet.Logs.iOS.csproj" />
     <ProjectReference Include="../DatadogNet.Trace.iOS/DatadogNet.Trace.iOS.csproj" />
+    <ProjectReference Include="../DatadogNet.SessionReplay.iOS/DatadogNet.SessionReplay.iOS.csproj" />
   </ItemGroup>
 
 </Project>

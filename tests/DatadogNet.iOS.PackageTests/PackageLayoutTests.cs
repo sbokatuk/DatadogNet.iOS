@@ -17,7 +17,7 @@ public class PackageLayoutTests
     private const string PayloadTargetFramework = "net8.0-ios18.0";
 
     [Theory]
-    [MemberData(nameof(Packages.Names), MemberType = typeof(Packages))]
+    [MemberData(nameof(Packages.BindingNames), MemberType = typeof(Packages))]
     public void Package_carries_a_binding_assembly_for_every_target_framework(string name)
     {
         using var package = Packages.OpenPackage(name);
@@ -32,7 +32,7 @@ public class PackageLayoutTests
     }
 
     [Theory]
-    [MemberData(nameof(Packages.Names), MemberType = typeof(Packages))]
+    [MemberData(nameof(Packages.BindingNames), MemberType = typeof(Packages))]
     public void Package_carries_the_native_payload_for_every_target_framework(string name)
     {
         using var package = Packages.OpenPackage(name);
@@ -57,7 +57,7 @@ public class PackageLayoutTests
     }
 
     [Theory]
-    [MemberData(nameof(Packages.Names), MemberType = typeof(Packages))]
+    [MemberData(nameof(Packages.BindingNames), MemberType = typeof(Packages))]
     public void Native_payload_is_the_same_across_target_frameworks(string name)
     {
         using var package = Packages.OpenPackage(name);
@@ -90,7 +90,7 @@ public class PackageLayoutTests
     }
 
     [Theory]
-    [MemberData(nameof(Packages.Names), MemberType = typeof(Packages))]
+    [MemberData(nameof(Packages.BindingNames), MemberType = typeof(Packages))]
     public void Native_payload_carries_exactly_its_own_xcframework(string name)
     {
         var spec = Packages.Spec(name);
@@ -111,7 +111,7 @@ public class PackageLayoutTests
     }
 
     [Theory]
-    [MemberData(nameof(Packages.Names), MemberType = typeof(Packages))]
+    [MemberData(nameof(Packages.BindingNames), MemberType = typeof(Packages))]
     public void Native_payload_carries_ios_slices_only(string name)
     {
         var spec = Packages.Spec(name);
@@ -134,7 +134,7 @@ public class PackageLayoutTests
     }
 
     [Theory]
-    [MemberData(nameof(Packages.Names), MemberType = typeof(Packages))]
+    [MemberData(nameof(Packages.BindingNames), MemberType = typeof(Packages))]
     public void Native_payload_carries_no_debug_symbols(string name)
     {
         var spec = Packages.Spec(name);
@@ -154,7 +154,7 @@ public class PackageLayoutTests
     }
 
     [Theory]
-    [MemberData(nameof(Packages.Names), MemberType = typeof(Packages))]
+    [MemberData(nameof(Packages.BindingNames), MemberType = typeof(Packages))]
     public void Xcframework_manifest_matches_the_slices_actually_shipped(string name)
     {
         var spec = Packages.Spec(name);
@@ -236,8 +236,17 @@ public class PackageLayoutTests
         Assert.Equal("README.md", Value("readme"));
 
         // The description names the framework the package wraps, which is what tells a reader on
-        // nuget.org which of the eleven they want.
-        Assert.Contains(Packages.Spec(name).Framework, Value("description"), StringComparison.Ordinal);
+        // nuget.org which of the twelve they want. The meta-package wraps none, so it has to say
+        // what it is instead.
+        var framework = Packages.Spec(name).Framework;
+        if (framework is not null)
+        {
+            Assert.Contains(framework, Value("description"), StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Contains("meta", Value("description"), StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     [Theory]
@@ -259,7 +268,7 @@ public class PackageLayoutTests
     }
 
     [Theory]
-    [MemberData(nameof(Packages.Names), MemberType = typeof(Packages))]
+    [MemberData(nameof(Packages.BindingNames), MemberType = typeof(Packages))]
     public void Symbol_package_is_produced(string name)
     {
         using var symbols = Packages.OpenPackage(name, ".snupkg");
@@ -289,6 +298,33 @@ public class PackageLayoutTests
         // The packages depend on each other at an exact version, so a set built at two different
         // versions does not restore at all.
         Assert.Single(versions);
+    }
+
+    [Fact]
+    public void Meta_package_ships_dependencies_and_nothing_else()
+    {
+        using var package = Packages.OpenPackage(Packages.MetaPackage);
+
+        // DatadogNet.Objc.iOS exists only to redirect an existing PackageReference at the modules
+        // that replaced the deleted DatadogObjc framework. Shipping an assembly or a native
+        // payload would mean it had quietly become a real package again - and, worse, would embed
+        // a second copy of frameworks its dependencies already carry.
+        Assert.Empty(package.Entries.Where(entry => entry.FullName.StartsWith("lib/", StringComparison.Ordinal)));
+
+        var nuspec = Packages.ReadNuspec(package, Packages.MetaPackage);
+        var groups = nuspec.Descendants()
+            .Where(element => element.Name.LocalName == "group")
+            .ToList();
+
+        // Every target framework still needs a dependency group. A net10 consumer that matched no
+        // group would restore the package and get nothing at all, which is exactly what happened
+        // before merge-packages.py learned to merge groups independently of lib/ assets.
+        Assert.Equal(
+            Packages.ExpectedTargetFrameworks.OrderBy(tfm => tfm),
+            groups.Select(group => group.Attribute("targetFramework")?.Value).OrderBy(tfm => tfm));
+
+        Assert.All(groups, group => Assert.NotEmpty(
+            group.Elements().Where(element => element.Name.LocalName == "dependency")));
     }
 
     [Fact]

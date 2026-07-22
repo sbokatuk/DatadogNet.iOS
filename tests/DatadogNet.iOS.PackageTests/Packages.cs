@@ -22,16 +22,22 @@ public static class Packages
     public static readonly PackageSpec[] All =
     [
         new("Internal", "DatadogInternal", []),
-        new("Core", "DatadogCore", ["Internal"]),
-        new("CrashReporter", "CrashReporter", []),
         new("OpenTelemetryApi", "OpenTelemetryApi", []),
+        new("Core", "DatadogCore", ["Internal"]),
         new("Trace", "DatadogTrace", ["Core", "Internal", "OpenTelemetryApi"]),
         new("Logs", "DatadogLogs", ["Core", "Internal"]),
         new("RUM", "DatadogRUM", ["Core", "Internal"]),
         new("SessionReplay", "DatadogSessionReplay", ["Core", "Internal"]),
         new("WebViewTracking", "DatadogWebViewTracking", ["Core", "Internal"]),
-        new("CrashReporting", "DatadogCrashReporting", ["Core", "Internal", "CrashReporter"]),
-        new("Objc", "DatadogObjc", ["Core", "Internal", "Logs", "RUM", "SessionReplay", "Trace"]),
+        new("CrashReporting", "DatadogCrashReporting", ["Core", "Internal"]),
+        new("Flags", "DatadogFlags", ["Core", "Internal"]),
+        new("Profiling", "DatadogProfiling", ["Core", "Internal"]),
+
+        // The compatibility meta-package. It wraps no framework and ships no assembly - it exists
+        // so an app referencing DatadogNet.Objc.iOS still restores a working set now that
+        // dd-sdk-ios has deleted the DatadogObjc framework and spread its types across the product
+        // modules.
+        new("Objc", Framework: null, ["Core", "Logs", "RUM", "SessionReplay", "Trace"]),
     ];
 
     /// <summary>Target frameworks every package must carry a binding assembly for.</summary>
@@ -57,6 +63,24 @@ public static class Packages
 
     public static PackageSpec Spec(string name) =>
         All.Single(package => package.Name == name);
+
+    /// <summary>Packages that ship a native framework, i.e. everything but the meta-package.</summary>
+    public static TheoryData<string> BindingNames
+    {
+        get
+        {
+            var data = new TheoryData<string>();
+            foreach (var package in All.Where(package => package.Framework is not null))
+            {
+                data.Add(package.Name);
+            }
+
+            return data;
+        }
+    }
+
+    /// <summary>The dependency-only compatibility package, which has no assembly or payload.</summary>
+    public const string MetaPackage = "Objc";
 
     public static string PackageId(string name) => $"DatadogNet.{name}.iOS";
 
@@ -162,6 +186,9 @@ public static class Packages
 
 /// <summary>What one package is expected to be.</summary>
 /// <param name="Name">The middle segment of the id: <c>DatadogNet.<see cref="Name"/>.iOS</c>.</param>
-/// <param name="Framework">The native xcframework the package ships.</param>
+/// <param name="Framework">
+/// The native xcframework the package ships, or <see langword="null"/> for a dependency-only
+/// meta-package.
+/// </param>
 /// <param name="DependsOn">The <see cref="Name"/>s of the packages it must depend on.</param>
-public sealed record PackageSpec(string Name, string Framework, string[] DependsOn);
+public sealed record PackageSpec(string Name, string? Framework, string[] DependsOn);

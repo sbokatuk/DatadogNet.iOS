@@ -47,9 +47,11 @@ case "$DATADOG_VERSION" in
 esac
 
 # The eleven frameworks the archive ships. Listed rather than globbed so that a framework
-# appearing or disappearing upstream - as DatadogObjc did in 3.0, and DatadogFlags in 3.x - is a
-# loud failure here rather than a package that silently stops being built.
-FRAMEWORKS="CrashReporter DatadogCore DatadogCrashReporting DatadogInternal DatadogLogs DatadogObjc DatadogRUM DatadogSessionReplay DatadogTrace DatadogWebViewTracking OpenTelemetryApi"
+# appearing or disappearing upstream is a loud failure here rather than a package that silently
+# stops being built. 3.0 exercised exactly that: DatadogObjc was removed and its contents folded
+# into the product modules, CrashReporter went away when KSCrash replaced PLCrashReporter, and
+# DatadogFlags and DatadogProfiling appeared.
+FRAMEWORKS="DatadogCore DatadogCrashReporting DatadogFlags DatadogInternal DatadogLogs DatadogProfiling DatadogRUM DatadogSessionReplay DatadogTrace DatadogWebViewTracking OpenTelemetryApi"
 
 expected=$(sed -n "s/^$DATADOG_VERSION[[:space:]]\{1,\}\([0-9a-f]\{64\}\).*/\1/p" "$CHECKSUMS" | head -1)
 if [ -z "$expected" ]; then

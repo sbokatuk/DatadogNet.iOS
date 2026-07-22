@@ -1,13 +1,14 @@
-// Nullable annotations are enabled per file rather than for the project: the generated
-// binding sources are not written against a nullable context, and switching the whole
-// project over would bury real warnings here under hundreds of generated ones.
+// Nullable annotations are enabled per file rather than for the project: the generated binding
+// sources are not written against a nullable context, and switching the whole project over would
+// bury real warnings here under hundreds of generated ones.
 #nullable enable
 
 using System;
 using System.Collections.Generic;
+using DatadogCore;
 using Foundation;
 
-namespace DatadogObjc
+namespace DatadogRUM
 {
 	public partial class DDRUMMonitor
 	{
@@ -17,20 +18,18 @@ namespace DatadogObjc
 		/// <param name="attributes">Attributes attached to the view.</param>
 		/// <returns>A scope that stops the view when disposed.</returns>
 		/// <remarks>
-		/// The bound API is a pair of calls that have to be matched by key, and a view left open by
-		/// an early return or an exception stays open for the rest of the session - every
-		/// subsequent action and error is attributed to it. A <see langword="using"/> statement
-		/// makes that structurally impossible:
+		/// The bound API is a pair of calls matched by key, and a view left open by an early return
+		/// or an exception stays open for the rest of the session - every subsequent action and
+		/// error is attributed to it. A <see langword="using"/> statement makes that structurally
+		/// impossible:
 		/// <code>
 		/// using (RUM.Monitor.StartView ("checkout")) {
 		///     // ... work; the view is stopped however this block is left
 		/// }
 		/// </code>
-		/// The scope stops the view with no attributes. To attach attributes at stop time - a
-		/// checkout total, say, which is not known when the view opens - call
-		/// <see cref="StopView(string, IReadOnlyDictionary{string, object})"/> yourself instead of
-		/// disposing the scope; disposing it afterwards is harmless, since the scope stops only
-		/// once.
+		/// The scope stops the view with no attributes. To attach attributes at stop time, call
+		/// <see cref="StopView(string, IReadOnlyDictionary{string, object})"/> yourself; disposing
+		/// the scope afterwards is harmless, since it stops only once.
 		/// </remarks>
 		public RUMViewScope StartView (string key, string? name = null, IReadOnlyDictionary<string, object?>? attributes = null)
 		{
@@ -60,10 +59,6 @@ namespace DatadogObjc
 		}
 
 		/// <summary>Records an error from a message.</summary>
-		/// <param name="message">What went wrong.</param>
-		/// <param name="source">Where the error came from. Defaults to <see cref="DDRUMErrorSource.Source"/>.</param>
-		/// <param name="stack">An optional stack trace.</param>
-		/// <param name="attributes">Attributes attached to the error.</param>
 		public void AddError (
 			string message,
 			DDRUMErrorSource source = DDRUMErrorSource.Source,
@@ -76,12 +71,12 @@ namespace DatadogObjc
 			AddErrorWithMessage (message, stack, source, DatadogAttributes.From (attributes));
 		}
 
-		/// <summary>Records an error from a <see cref="Exception"/>.</summary>
+		/// <summary>Records an error from an <see cref="Exception"/>.</summary>
 		/// <remarks>
 		/// The bound <c>AddErrorWithError</c> takes an <see cref="NSError"/>, which a managed
 		/// exception is not. This reports the exception's type and message, and passes
-		/// <see cref="Exception.StackTrace"/> as the stack so the error is grouped by where it was
-		/// thrown rather than lumped together with every other error of the same message.
+		/// <see cref="Exception.StackTrace"/> as the stack so errors group by where they were
+		/// thrown rather than by message alone.
 		/// </remarks>
 		public void AddError (
 			Exception exception,
@@ -97,11 +92,32 @@ namespace DatadogObjc
 				source,
 				DatadogAttributes.From (attributes));
 		}
+
+		/// <summary>Adds attributes to the active view, which propagate to its child events.</summary>
+		/// <remarks>
+		/// New in dd-sdk-ios 3.0: view-level attributes are inherited by the resources, actions,
+		/// errors and long tasks recorded while the view is active, so they no longer have to be
+		/// repeated on every call.
+		/// </remarks>
+		public void AddViewAttributes (IReadOnlyDictionary<string, object?> attributes)
+		{
+			if (attributes is null)
+				throw new ArgumentNullException (nameof (attributes));
+
+			AddViewAttributes (DatadogAttributes.From (attributes));
+		}
+
+		/// <summary>Removes view-level attributes previously added.</summary>
+		public void RemoveViewAttributes (params string[] keys)
+		{
+			if (keys is null)
+				throw new ArgumentNullException (nameof (keys));
+
+			RemoveViewAttributesForKeys (keys);
+		}
 	}
 
-	/// <summary>
-	/// Keeps a RUM view open for the lifetime of a <see langword="using"/> block.
-	/// </summary>
+	/// <summary>Keeps a RUM view open for the lifetime of a <see langword="using"/> block.</summary>
 	/// <remarks>
 	/// Returned by <see cref="DDRUMMonitor.StartView"/>. Disposing stops the view; disposing again
 	/// does nothing, so stopping the view by hand first and then letting the scope fall out of

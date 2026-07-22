@@ -1,13 +1,14 @@
-// Nullable annotations are enabled per file rather than for the project: the generated
-// binding sources are not written against a nullable context, and switching the whole
-// project over would bury real warnings here under hundreds of generated ones.
+// Nullable annotations are enabled per file rather than for the project: the generated binding
+// sources are not written against a nullable context, and switching the whole project over would
+// bury real warnings here under hundreds of generated ones.
 #nullable enable
 
 using System;
 using System.Collections.Generic;
+using DatadogCore;
 using Foundation;
 
-namespace DatadogObjc
+namespace DatadogLogs
 {
 	public partial class DDLoggerConfiguration
 	{
@@ -23,8 +24,7 @@ namespace DatadogObjc
 		/// <remarks>
 		/// The generated type only has the designated initializer, which takes all eight settings
 		/// positionally with no defaults - so configuring just a name means spelling out seven more
-		/// arguments and knowing what Datadog's defaults are. The defaults here are the ones the
-		/// native <c>Logger.Configuration</c> declares.
+		/// arguments and knowing what Datadog's defaults are.
 		/// </remarks>
 		public static DDLoggerConfiguration Create (
 			string? name = null,
@@ -54,10 +54,6 @@ namespace DatadogObjc
 		/// <param name="customEndpoint">
 		/// Where logs are sent. Leave null for the intake of the site the SDK was configured with.
 		/// </param>
-		/// <remarks>
-		/// Saves constructing a <see cref="DDLogsConfiguration"/> only to pass null to it, which is
-		/// what enabling Logs with default settings otherwise requires.
-		/// </remarks>
 		public static void Enable (NSUrl? customEndpoint = null) =>
 			EnableWith (new DDLogsConfiguration (customEndpoint));
 	}
@@ -65,7 +61,6 @@ namespace DatadogObjc
 	public partial class DDLogger
 	{
 		/// <summary>Creates a logger, with Datadog's own defaults for anything unset.</summary>
-		/// <remarks>Shorthand for <c>DDLogger.CreateWith (DDLoggerConfiguration.Create (...))</c>.</remarks>
 		public static DDLogger Create (
 			string? name = null,
 			string? service = null,
@@ -89,11 +84,10 @@ namespace DatadogObjc
 
 		/// <summary>Logs at the given level, with attributes and an optional exception.</summary>
 		/// <remarks>
-		/// The bound API is six methods per level - one per overload of message, error and
-		/// attributes - and the error parameter is an <see cref="NSError"/>, which a managed
-		/// exception is not. This takes the level as an argument, so a level chosen at runtime does
-		/// not need a switch over six method names, and accepts an <see cref="Exception"/> by
-		/// folding its type, message and stack trace into the log's attributes.
+		/// The bound API is six methods per level and an <see cref="NSError"/> parameter that a
+		/// managed exception is not. This takes the level as an argument, so a level chosen at
+		/// runtime does not need a switch over six method names, and folds an
+		/// <see cref="Exception"/> into the log's attributes.
 		/// </remarks>
 		public void Log (
 			DDLogLevel level,
@@ -129,8 +123,7 @@ namespace DatadogObjc
 
 			// The (message, attributes) overload, not (message, error, attributes): the native
 			// error parameter is _Nonnull, so the generated binding throws ArgumentNullException
-			// rather than passing nil, and there is nothing to pass anyway - the exception has
-			// already been folded into the attributes above.
+			// rather than passing nil, and the exception has already been folded in above.
 			switch (level) {
 			case DDLogLevel.Debug:
 				Debug (message, native);
