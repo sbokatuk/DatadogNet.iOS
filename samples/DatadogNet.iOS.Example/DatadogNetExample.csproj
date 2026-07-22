@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!--
+		  Both target frameworks the .NET 9 SDK band can build, so the sample proves the packages
+		  resolve on each. net10.0-ios26.0 is deliberately left out: it needs the .NET 10 band,
+		  which would mean a second SDK and MAUI workload install to compile a sample that
+		  exercises exactly the same API. The device tests already run against net10.
+
+		  The platform version is pinned to match the packages' lib/ folders. A bare net9.0-ios
+		  resolves to the iOS 26 reference pack, which refuses to build unless Xcode is exactly
+		  26.0 - an unnecessary constraint for a sample. A consuming app targeting a later platform
+		  version still resolves these assets, since 18.0 is compatible with them.
+		-->
+		<TargetFrameworks>net8.0-ios18.0;net9.0-ios18.0</TargetFrameworks>
+
+		<OutputType>Exe</OutputType>
+		<RootNamespace>DatadogNetExample</RootNamespace>
+		<UseMaui>true</UseMaui>
+		<SingleProject>true</SingleProject>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<CheckEolTargetFramework>false</CheckEolTargetFramework>
+		<CheckEolWorkloads>false</CheckEolWorkloads>
+
+		<ApplicationTitle>DatadogNet Example</ApplicationTitle>
+		<ApplicationId>com.sbokatuk.datadognet.example</ApplicationId>
+		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+		<ApplicationVersion>1</ApplicationVersion>
+
+		<!--
+		  12.2 is the floor the Datadog frameworks impose: they are Swift and use the OS-provided
+		  Swift runtime, which is only ABI-stable from 12.2.
+		-->
+		<SupportedOSPlatformVersion>12.2</SupportedOSPlatformVersion>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<MauiFont Include="Resources\Fonts\*" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.1" />
+	</ItemGroup>
+
+	<!--
+	  Resolved from ./artifacts through the local feed in the repository's NuGet.config, not from
+	  nuget.org, so the sample always exercises your local build. Run ./build/BuildNugets.sh first.
+	  Pass -p:DatadogPackageVersion=2.17.0.1-rc.1 to point it at a specific build.
+
+	  Objc is the façade and pulls in Core, Internal, Logs, RUM, SessionReplay and Trace. Crash
+	  reporting is a separate opt-in, so it is referenced explicitly - which is exactly what a real
+	  app does.
+	-->
+	<PropertyGroup>
+		<DatadogPackageVersion Condition=" '$(DatadogPackageVersion)' == '' ">$(VersionPrefix)</DatadogPackageVersion>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="DatadogNet.Objc.iOS" Version="$(DatadogPackageVersion)" />
+		<PackageReference Include="DatadogNet.CrashReporting.iOS" Version="$(DatadogPackageVersion)" />
+	</ItemGroup>
+
+</Project>

@@ -3,9 +3,12 @@ using CrashReporter;
 using DatadogCrashReporting;
 using DatadogInternal;
 using DatadogObjc;
-// DatadogObjc re-exports the Session Replay types under its own namespace, so importing both
-// makes DDSessionReplay, DDSessionReplayConfiguration and the privacy-level enum ambiguous.
-// The DatadogSessionReplay ones are the originals; DatadogObjc's are the re-export.
+// DatadogObjc declares its own DDSessionReplay, DDSessionReplayConfiguration and privacy-level
+// enum, wrapping different native classes from the identically named ones here
+// (_TtC11DatadogObjc15DDSessionReplay against _TtC20DatadogSessionReplay15DDSessionReplay). Both
+// work; importing both namespaces unqualified is what does not. These tests deliberately drive the
+// DatadogSessionReplay ones, so that package's own binding is exercised rather than only the
+// façade's - the sample shows the DatadogObjc route an app would normally take.
 using SessionReplay = DatadogSessionReplay;
 using DatadogWebViewTracking;
 using Foundation;
