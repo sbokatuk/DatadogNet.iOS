@@ -1074,4 +1074,19 @@ namespace DatadogObjc
 		Lte = 10,
 		Unknown = 11
 	}
+
+	/// <summary>Network interface kinds reported in <c>DDLogEventNetworkConnectionInfo.AvailableInterfaces</c>.</summary>
+	/// <remarks>
+	/// That property is an <c>NSNumber[]</c> because Objective-C has no typed enum arrays, so the
+	/// values only mean anything once cast to this.
+	/// </remarks>
+	[Native]
+	public enum DDLogEventInterface : long
+	{
+		Wifi = 0,
+		WiredEthernet = 1,
+		Cellular = 2,
+		Loopback = 3,
+		Other = 4
+	}
 }

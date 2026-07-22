@@ -31,6 +31,7 @@ DDRUM.EnableWith(new DDRUMConfiguration(applicationID: "<RUM_APPLICATION_ID>"));
 - [Installing](#installing)
 - [Usage](#usage)
 - [Convenience API](#convenience-api)
+- [API coverage](#api-coverage)
 - [Migrating from `DatadogCore.iOS` / `DatadogObjc.iOS`](#migrating-from-datadogcoreios--datadogobjcios)
 - [How this repository works](#how-this-repository-works)
 - [Building locally](#building-locally)
@@ -44,8 +45,8 @@ DDRUM.EnableWith(new DDRUMConfiguration(applicationID: "<RUM_APPLICATION_ID>"));
 ## Packages
 
 Eleven packages, one per native framework in the Datadog release. Versions are
-`<dd-sdk-ios version>.<binding revision>` — `2.17.0.1` is dd-sdk-ios **2.17.0**, binding revision
-**1**. The fourth component belongs to this repository and advances when the bindings or packaging
+`<dd-sdk-ios version>.<binding revision>` — `2.17.0.2` is dd-sdk-ios **2.17.0**, binding revision
+**2**. The fourth component belongs to this repository and advances when the bindings or packaging
 change while the native binaries stay put.
 
 | Package | Wraps | Depends on | What it is for |
@@ -65,7 +66,7 @@ change while the native binaries stay put.
 Most apps need one line:
 
 ```xml
-<PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.1" />
+<PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.2" />
 ```
 
 Add `DatadogNet.CrashReporting.iOS` for crash reporting and `DatadogNet.WebViewTracking.iOS` for
@@ -87,7 +88,7 @@ OS-provided Swift runtime, which is only ABI-stable from 12.2.
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.1" />
+  <PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.2" />
 </ItemGroup>
 ```
 
@@ -100,7 +101,7 @@ Windows head does not try to restore them:
 
 ```xml
 <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
-  <PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.1" />
+  <PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.2" />
 </ItemGroup>
 ```
 
@@ -270,6 +271,7 @@ still there; nothing is hidden or renamed.
 | six methods per level, plus an `NSError` you do not have | `logger.Log(level, message, exception?, attributes?)` |
 | `DDDatadog.SetUserInfoWithId(id, null, null, empty)` | `DDDatadog.SetUserInfo(id)` |
 | `DDTrackingConsent.Granted` (a class, not an enum) | `DDDatadog.SetTrackingConsent(TrackingConsent.Granted)` |
+| `DDURLSessionInstrumentation.EnableWithConfiguration(...)` with a `Class` as a raw `IntPtr` | `DDURLSessionInstrumentation.Enable<MyDelegate>()` |
 
 The view scope is the one worth adopting everywhere: the raw API is a `StartViewWithKey` /
 `StopViewWithKey` pair matched by string key, and a view left open by an early return or an
@@ -278,6 +280,61 @@ exception captures every later action and error in the session.
 Attribute values may be strings, any numeric type, `bool`, `DateTime`, `DateTimeOffset`, `Guid`,
 enums, `NSObject`s, arrays, and nested dictionaries. Anything else throws `ArgumentException`
 rather than being silently dropped.
+
+### Redacting events before upload
+
+Both RUM and Logs let you rewrite or drop events on the device, before anything is uploaded. This
+is the supported way to keep PII out of Datadog.
+
+```csharp
+var logs = new DDLogsConfiguration(customEndpoint: null);
+logs.SetEventMapper(logEvent =>
+{
+    logEvent.Message = Redact(logEvent.Message);
+    return logEvent;    // or return null to drop the event entirely
+});
+DDLogs.EnableWith(logs);
+```
+
+RUM has five equivalents — `SetViewEventMapper`, `SetActionEventMapper`, `SetResourceEventMapper`,
+`SetErrorEventMapper` and `SetLongTaskEventMapper` — registered on `DDRUMConfiguration` before
+`DDRUM.EnableWith`. Mappers can only be set at configuration time.
+
+### Network instrumentation
+
+```csharp
+DDURLSessionInstrumentation.Enable<MySessionDelegate>();
+```
+
+`MySessionDelegate` must be an `NSObject` implementing `INSUrlSessionDataDelegate` and carrying a
+`[Register]` attribute. The raw binding takes the delegate class as an `IntPtr`, which accepts
+`IntPtr.Zero` happily and then instruments nothing; the generic form resolves the Objective-C class
+and throws if it does not exist.
+
+---
+
+## API coverage
+
+The bindings cover **346 of the 347 public Objective-C types** Datadog declares for 2.17.0, and
+every documented feature is reachable from C#. Verified by diffing the bound selectors against the
+`-Swift.h` header each xcframework ships, not against the documentation.
+
+The one unbound type is **`DDUIPressRUMActionsPredicate`**, which reports Siri Remote presses. The
+protocol is declared in the iOS header, but nothing in the iOS slice accepts it — the property that
+consumes it exists only on tvOS — so it is unreachable from a `net*-ios` app.
+
+Three groups of *members* are also deliberately not bound:
+
+- **`DDRUMLongTaskEventLongTaskScripts` and `DDRUMVitalEventVital.details`** — reachable only from
+  inside a long-task or vital event mapper, and describe JavaScript long tasks, which a native iOS
+  app does not produce.
+- **Four `DDTelemetryConfigurationEventTelemetryConfiguration` properties** covering Session Replay
+  privacy levels. These are read-only fields on a *telemetry* event describing what the SDK
+  reported about itself; they are not configuration knobs. The real knob,
+  `DDSessionReplayConfiguration.DefaultPrivacyLevel`, is bound.
+- **Three `URLSession` overloads on `DatadogURLSessionDelegate`** — see
+  [the note in that binding](src/DatadogNet.Internal.iOS/ApiDefinitions.cs); binding them crashes
+  every consuming app at startup, and they remain callable under their inherited names.
 
 ---
 
@@ -288,7 +345,7 @@ edit — no `using` directive and no call site changes.
 
 ```diff
 -<PackageReference Include="DatadogObjc.iOS" Version="2.17.0.1" />
-+<PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.1" />
++<PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.2" />
 ```
 
 | Old | New |
@@ -317,7 +374,7 @@ selector is already registered on the member 'DidFinishCollectingMetrics'.
 ```
 
 **`CrashReporter` is versioned with everything else.** It was `1.11.2.1`, tracking PLCrashReporter
-upstream; it is now `2.17.0.1` like the rest, because it ships inside the same Datadog release and
+upstream; it is now `2.17.0.2` like the rest, because it ships inside the same Datadog release and
 the old numbering made it impossible to tell which Datadog build a given package belonged to.
 
 **`net7.0-ios` is gone, `net9`/`net10` are new.** The old packages targeted `net7.0-ios16.1` and
@@ -390,7 +447,7 @@ dotnet test tests/DatadogNet.iOS.PackageTests
 Run the on-simulator smoke tests against the packed packages:
 
 ```bash
-./.github/scripts/run-simulator-tests.sh 2.17.0.1 net9.0-ios18.0
+./.github/scripts/run-simulator-tests.sh 2.17.0.2 net9.0-ios18.0
 ```
 
 Build and run the sample:
@@ -436,7 +493,7 @@ dropping a package — update the `FRAMEWORKS` list, add or remove the binding p
 
 ## Releasing
 
-Tag it. `v2.17.0.1` builds, tests, publishes all eleven packages to nuget.org via trusted
+Tag it. `v2.17.0.2` builds, tests, publishes all eleven packages to nuget.org via trusted
 publishing, and creates a GitHub release. The tag drives which native SDK is bound, so an older
 line can be released by tagging it.
 
