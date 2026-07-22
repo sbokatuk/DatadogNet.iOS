@@ -1,0 +1,143 @@
+using System;
+using System.Collections.Generic;
+using Foundation;
+
+namespace DatadogObjc
+{
+	public partial class DDLoggerConfiguration
+	{
+		/// <summary>Creates a logger configuration, with Datadog's own defaults for anything unset.</summary>
+		/// <param name="name">The logger name, reported as the event's logger.</param>
+		/// <param name="service">The service the logs belong to. Defaults to the SDK's service.</param>
+		/// <param name="networkInfoEnabled">Attach network connectivity information to each log.</param>
+		/// <param name="bundleWithRumEnabled">Correlate logs with the current RUM view.</param>
+		/// <param name="bundleWithTraceEnabled">Correlate logs with the active span.</param>
+		/// <param name="remoteSampleRate">Percentage of logs sent to Datadog, 0 to 100.</param>
+		/// <param name="remoteLogThreshold">The lowest level sent to Datadog.</param>
+		/// <param name="printLogsToConsole">Also write logs to the Xcode console.</param>
+		/// <remarks>
+		/// The generated type only has the designated initializer, which takes all eight settings
+		/// positionally with no defaults - so configuring just a name means spelling out seven more
+		/// arguments and knowing what Datadog's defaults are. The defaults here are the ones the
+		/// native <c>Logger.Configuration</c> declares.
+		/// </remarks>
+		public static DDLoggerConfiguration Create (
+			string? name = null,
+			string? service = null,
+			bool networkInfoEnabled = false,
+			bool bundleWithRumEnabled = true,
+			bool bundleWithTraceEnabled = true,
+			float remoteSampleRate = 100,
+			DDLogLevel remoteLogThreshold = DDLogLevel.Debug,
+			bool printLogsToConsole = false)
+		{
+			return new DDLoggerConfiguration (
+				service,
+				name,
+				networkInfoEnabled,
+				bundleWithRumEnabled,
+				bundleWithTraceEnabled,
+				remoteSampleRate,
+				remoteLogThreshold,
+				printLogsToConsole);
+		}
+	}
+
+	public partial class DDLogs
+	{
+		/// <summary>Enables log collection.</summary>
+		/// <param name="customEndpoint">
+		/// Where logs are sent. Leave null for the intake of the site the SDK was configured with.
+		/// </param>
+		/// <remarks>
+		/// Saves constructing a <see cref="DDLogsConfiguration"/> only to pass null to it, which is
+		/// what enabling Logs with default settings otherwise requires.
+		/// </remarks>
+		public static void Enable (NSUrl? customEndpoint = null) =>
+			EnableWith (new DDLogsConfiguration (customEndpoint));
+	}
+
+	public partial class DDLogger
+	{
+		/// <summary>Creates a logger, with Datadog's own defaults for anything unset.</summary>
+		/// <remarks>Shorthand for <c>DDLogger.CreateWith (DDLoggerConfiguration.Create (...))</c>.</remarks>
+		public static DDLogger Create (
+			string? name = null,
+			string? service = null,
+			bool networkInfoEnabled = false,
+			bool bundleWithRumEnabled = true,
+			bool bundleWithTraceEnabled = true,
+			float remoteSampleRate = 100,
+			DDLogLevel remoteLogThreshold = DDLogLevel.Debug,
+			bool printLogsToConsole = false)
+		{
+			return CreateWith (DDLoggerConfiguration.Create (
+				name,
+				service,
+				networkInfoEnabled,
+				bundleWithRumEnabled,
+				bundleWithTraceEnabled,
+				remoteSampleRate,
+				remoteLogThreshold,
+				printLogsToConsole));
+		}
+
+		/// <summary>Logs at the given level, with attributes and an optional exception.</summary>
+		/// <remarks>
+		/// The bound API is six methods per level - one per overload of message, error and
+		/// attributes - and the error parameter is an <see cref="NSError"/>, which a managed
+		/// exception is not. This takes the level as an argument, so a level chosen at runtime does
+		/// not need a switch over six method names, and accepts an <see cref="Exception"/> by
+		/// folding its type, message and stack trace into the log's attributes.
+		/// </remarks>
+		public void Log (
+			DDLogLevel level,
+			string message,
+			Exception? exception = null,
+			IReadOnlyDictionary<string, object?>? attributes = null)
+		{
+			if (message is null)
+				throw new ArgumentNullException (nameof (message));
+
+			var payload = attributes;
+
+			if (exception is not null) {
+				var merged = attributes is null
+					? new Dictionary<string, object?> ()
+					: new Dictionary<string, object?> ((IDictionary<string, object?>) attributes);
+
+				// Datadog's own reserved attribute names for an error, so these render as an error
+				// in the Logs UI rather than as three unrelated custom attributes.
+				merged["error.kind"] = exception.GetType ().FullName;
+				merged["error.message"] = exception.Message;
+				merged["error.stack"] = exception.StackTrace;
+				payload = merged;
+			}
+
+			var native = DatadogAttributes.From (payload);
+
+			switch (level) {
+			case DDLogLevel.Debug:
+				Debug (message, null, native);
+				break;
+			case DDLogLevel.Info:
+				Info (message, null, native);
+				break;
+			case DDLogLevel.Notice:
+				Notice (message, null, native);
+				break;
+			case DDLogLevel.Warn:
+				Warn (message, null, native);
+				break;
+			case DDLogLevel.Error:
+				Error (message, null, native);
+				break;
+			case DDLogLevel.Critical:
+				Critical (message, null, native);
+				break;
+			default:
+				throw new ArgumentOutOfRangeException (nameof (level), level, "Unknown log level.");
+			}
+		}
+	}
+}

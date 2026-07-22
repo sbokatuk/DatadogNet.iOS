@@ -1,0 +1,46 @@
+<Project>
+
+  <PropertyGroup>
+    <!--
+      Package versions are <dd-sdk-ios version>.<binding revision>, e.g. 2.17.0.1.
+
+      The first three components are the native Datadog iOS SDK inside the package, which is also
+      what upstream tags its releases with and what FetchXcFrameworks.sh downloads. The fourth
+      belongs to this repository and increments whenever the bindings or packaging change while
+      the native binaries stay put.
+
+      CrashReporter and OpenTelemetryApi are versioned in lock-step with the Datadog packages
+      rather than with PLCrashReporter/OpenTelemetry upstream, because they are shipped as part of
+      the same Datadog.xcframework.zip and are only ever consumed together with it. The old
+      DataDog-SDK-iOS-net repository versioned CrashReporter.iOS as 1.11.2.1 instead; that made it
+      impossible to tell which Datadog release a given CrashReporter package belonged to.
+    -->
+    <DatadogNativeVersion>2.17.0</DatadogNativeVersion>
+    <DatadogBindingRevision>1</DatadogBindingRevision>
+    <VersionPrefix>$(DatadogNativeVersion).$(DatadogBindingRevision)</VersionPrefix>
+
+    <Authors>s.bokatuk</Authors>
+    <Company>s.bokatuk</Company>
+    <Copyright>Copyright © s.bokatuk</Copyright>
+    <PackageProjectUrl>https://github.com/sbokatuk/DatadogNet.iOS</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/sbokatuk/DatadogNet.iOS</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <!--
+      One expression for every package: the binding source here is MIT, and every native binary
+      in Datadog.xcframework.zip is Apache-2.0 - dd-sdk-ios, PLCrashReporter and
+      opentelemetry-swift are all Apache-2.0. Unlike the FFmpegKit bindings, no package needs a
+      per-variant licence expression.
+    -->
+    <PackageLicenseExpression>MIT AND Apache-2.0</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition=" '$(GITHUB_ACTIONS)' == 'true' ">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

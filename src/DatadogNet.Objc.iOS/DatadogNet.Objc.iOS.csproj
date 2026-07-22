@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <DatadogFramework>DatadogObjc</DatadogFramework>
+    <DatadogPackageName>Objc</DatadogPackageName>
+    <Description>.NET for iOS / .NET MAUI bindings for the Datadog iOS SDK's DatadogObjc framework - the package to install. Exposes the whole DD* API from C#: SDK configuration and lifecycle, RUM views/actions/resources/errors, Logs, Trace, Session Replay and tracing-header propagation, and pulls in every feature module it needs. Built against dd-sdk-ios $(DatadogNativeVersion). Add DatadogNet.CrashReporting.iOS for crash reporting and DatadogNet.WebViewTracking.iOS for hybrid apps.</Description>
+    <PackageTags>datadog;rum;logs;tracing;session-replay</PackageTags>
+  </PropertyGroup>
+
+  <Import Project="../Datadog.Binding.props" />
+
+  <!--
+    The façade: DatadogObjc is where Datadog's Swift API is projected into Objective-C, so this is
+    the only package that binds a substantial managed surface. Its dependencies are exactly the
+    frameworks its binary links, which is also the set an app needs to use any of the DD* types.
+
+    DatadogCrashReporting and DatadogWebViewTracking are deliberately not here. They are separate
+    opt-ins upstream, and neither is referenced by DatadogObjc's binary - pulling them in would
+    add ~3 MB and a crash handler to every app that only wanted RUM.
+
+    ProjectReference, not PackageReference: `dotnet pack` turns each one into a NuGet dependency on
+    the referenced package at the same version, so the published graph is identical either way -
+    but a PackageReference at $(Version) cannot restore until that version has been packed, which
+    makes a clean clone unbuildable and forces every local build through the packing script in
+    dependency order.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../DatadogNet.Core.iOS/DatadogNet.Core.iOS.csproj" />
+    <ProjectReference Include="../DatadogNet.Internal.iOS/DatadogNet.Internal.iOS.csproj" />
+    <ProjectReference Include="../DatadogNet.Logs.iOS/DatadogNet.Logs.iOS.csproj" />
+    <ProjectReference Include="../DatadogNet.RUM.iOS/DatadogNet.RUM.iOS.csproj" />
+    <ProjectReference Include="../DatadogNet.SessionReplay.iOS/DatadogNet.SessionReplay.iOS.csproj" />
+    <ProjectReference Include="../DatadogNet.Trace.iOS/DatadogNet.Trace.iOS.csproj" />
+  </ItemGroup>
+
+</Project>
