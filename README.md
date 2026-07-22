@@ -370,6 +370,11 @@ The tests consume the packed `.nupkg`s from `artifacts/` rather than referencing
 they exercise what actually gets published — including the inter-package dependencies, which a
 `ProjectReference` would bypass entirely.
 
+`DatadogNet.sln` deliberately contains the binding projects and the tests but **not** the sample.
+A solution-wide `Release` build would AOT-compile the MAUI app for device across both of its target
+frameworks, which takes longer than everything else in the repository put together. Build the
+sample directly, as the command in the previous section does.
+
 ---
 
 ## Building locally
