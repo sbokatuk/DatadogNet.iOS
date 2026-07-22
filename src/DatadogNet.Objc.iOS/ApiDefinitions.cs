@@ -456,6 +456,13 @@ namespace DatadogObjc
 		[Export ("initWithCustomEndpoint:")]
 		[DesignatedInitializer]
 		NativeHandle Constructor ([NullAllowed] NSUrl customEndpoint);
+
+		// -(void)setEventMapper:(DDLogEvent * _Nullable (^ _Nonnull)(DDLogEvent * _Nonnull))mapper;
+		// Return the event to keep it, a modified event to rewrite it, or null to drop it entirely.
+		// This is the Logs counterpart of DDRUMConfiguration's five event mappers, and the only
+		// supported way to redact a log before it leaves the device.
+		[Export ("setEventMapper:")]
+		void SetEventMapper (Func<DDLogEvent, DDLogEvent> mapper);
 	}
 
 	// @interface DDNSURLSessionDelegate : NSObject <NSURLSessionDataDelegate>
@@ -5642,5 +5649,245 @@ namespace DatadogObjc
 		[Abstract]
 		[Export ("forEachBaggageItem:")]
 		void ForEachBaggageItem (Func<NSString, NSString, bool> callback);
+	}
+
+	// ---------------------------------------------------------------------------------------
+	// Log event model, reached through DDLogsConfiguration.SetEventMapper.
+	//
+	// Objective Sharpie emitted none of this - not the ten DDLogEvent* classes, not the three
+	// enums, and not setEventMapper: itself - so the previous bindings could not redact or drop a
+	// log before it was uploaded, even though RUM had all five of its mappers. Transcribed by hand
+	// from DatadogObjc-Swift.h.
+	//
+	// Only the properties the header declares as writable are bound with setters; the rest are
+	// read-only there, and making them settable here would compile but silently do nothing.
+	// ---------------------------------------------------------------------------------------
+
+	// @interface DDLogEventAttributes : NSObject
+	[BaseType (typeof(NSObject), Name = "_TtC11DatadogObjc20DDLogEventAttributes")]
+	[DisableDefaultCtor]
+	interface DDLogEventAttributes
+	{
+		// @property (copy, nonatomic) NSDictionary<NSString *,id> * _Nonnull userAttributes;
+		[Export ("userAttributes", ArgumentSemantic.Copy)]
+		NSDictionary<NSString, NSObject> UserAttributes { get; set; }
+	}
+
+	// @interface DDLogEventBinaryImage : NSObject
+	[BaseType (typeof(NSObject), Name = "_TtC11DatadogObjc21DDLogEventBinaryImage")]
+	[DisableDefaultCtor]
+	interface DDLogEventBinaryImage
+	{
+		[NullAllowed, Export ("arch")]
+		string Arch { get; }
+
+		[Export ("isSystem")]
+		bool IsSystem { get; }
+
+		[NullAllowed, Export ("loadAddress")]
+		string LoadAddress { get; }
+
+		[NullAllowed, Export ("maxAddress")]
+		string MaxAddress { get; }
+
+		[Export ("name")]
+		string Name { get; }
+
+		[Export ("uuid")]
+		string Uuid { get; }
+	}
+
+	// @interface DDLogEventError : NSObject
+	[BaseType (typeof(NSObject), Name = "_TtC11DatadogObjc15DDLogEventError")]
+	[DisableDefaultCtor]
+	interface DDLogEventError
+	{
+		[NullAllowed, Export ("kind")]
+		string Kind { get; set; }
+
+		[NullAllowed, Export ("message")]
+		string Message { get; set; }
+
+		[NullAllowed, Export ("stack")]
+		string Stack { get; set; }
+
+		[Export ("sourceType")]
+		string SourceType { get; set; }
+
+		[NullAllowed, Export ("fingerprint")]
+		string Fingerprint { get; set; }
+
+		[NullAllowed, Export ("binaryImages", ArgumentSemantic.Copy)]
+		DDLogEventBinaryImage[] BinaryImages { get; set; }
+	}
+
+	// @interface DDLogEventCarrierInfo : NSObject
+	[BaseType (typeof(NSObject), Name = "_TtC11DatadogObjc21DDLogEventCarrierInfo")]
+	[DisableDefaultCtor]
+	interface DDLogEventCarrierInfo
+	{
+		[NullAllowed, Export ("carrierName")]
+		string CarrierName { get; }
+
+		[NullAllowed, Export ("carrierISOCountryCode")]
+		string CarrierIsoCountryCode { get; }
+
+		[Export ("carrierAllowsVOIP")]
+		bool CarrierAllowsVoip { get; }
+
+		[Export ("radioAccessTechnology")]
+		DDLogEventRadioAccessTechnology RadioAccessTechnology { get; }
+	}
+
+	// @interface DDLogEventDeviceInfo : NSObject
+	[BaseType (typeof(NSObject), Name = "_TtC11DatadogObjc20DDLogEventDeviceInfo")]
+	[DisableDefaultCtor]
+	interface DDLogEventDeviceInfo
+	{
+		[Export ("brand")]
+		string Brand { get; }
+
+		[Export ("name")]
+		string Name { get; }
+
+		[Export ("model")]
+		string Model { get; }
+
+		[Export ("architecture")]
+		string Architecture { get; }
+	}
+
+	// @interface DDLogEventDd : NSObject
+	[BaseType (typeof(NSObject), Name = "_TtC11DatadogObjc12DDLogEventDd")]
+	[DisableDefaultCtor]
+	interface DDLogEventDd
+	{
+		[Export ("device", ArgumentSemantic.Strong)]
+		DDLogEventDeviceInfo Device { get; }
+	}
+
+	// @interface DDLogEventNetworkConnectionInfo : NSObject
+	[BaseType (typeof(NSObject), Name = "_TtC11DatadogObjc31DDLogEventNetworkConnectionInfo")]
+	[DisableDefaultCtor]
+	interface DDLogEventNetworkConnectionInfo
+	{
+		[Export ("reachability")]
+		DDLogEventReachability Reachability { get; }
+
+		[NullAllowed, Export ("availableInterfaces", ArgumentSemantic.Copy)]
+		NSNumber[] AvailableInterfaces { get; }
+
+		[NullAllowed, Export ("supportsIPv4", ArgumentSemantic.Strong)]
+		NSNumber SupportsIPv4 { get; }
+
+		[NullAllowed, Export ("supportsIPv6", ArgumentSemantic.Strong)]
+		NSNumber SupportsIPv6 { get; }
+
+		[NullAllowed, Export ("isExpensive", ArgumentSemantic.Strong)]
+		NSNumber IsExpensive { get; }
+
+		[NullAllowed, Export ("isConstrained", ArgumentSemantic.Strong)]
+		NSNumber IsConstrained { get; }
+	}
+
+	// @interface DDLogEventOperatingSystem : NSObject
+	[BaseType (typeof(NSObject), Name = "_TtC11DatadogObjc25DDLogEventOperatingSystem")]
+	[DisableDefaultCtor]
+	interface DDLogEventOperatingSystem
+	{
+		[Export ("name")]
+		string Name { get; }
+
+		[Export ("version")]
+		string Version { get; }
+
+		[NullAllowed, Export ("build")]
+		string Build { get; }
+	}
+
+	// @interface DDLogEventUserInfo : NSObject
+	[BaseType (typeof(NSObject), Name = "_TtC11DatadogObjc18DDLogEventUserInfo")]
+	[DisableDefaultCtor]
+	interface DDLogEventUserInfo
+	{
+		[NullAllowed, Export ("id")]
+		string Id { get; }
+
+		[NullAllowed, Export ("name")]
+		string Name { get; }
+
+		[NullAllowed, Export ("email")]
+		string Email { get; }
+
+		[Export ("extraInfo", ArgumentSemantic.Copy)]
+		NSDictionary<NSString, NSObject> ExtraInfo { get; set; }
+	}
+
+	// @interface DDLogEvent : NSObject
+	[BaseType (typeof(NSObject), Name = "_TtC11DatadogObjc10DDLogEvent")]
+	[DisableDefaultCtor]
+	interface DDLogEvent
+	{
+		[Export ("date", ArgumentSemantic.Copy)]
+		NSDate Date { get; }
+
+		[Export ("status")]
+		DDLogEventStatus Status { get; }
+
+		// One of the two properties worth writing to: redacting a message in place is the common
+		// reason to install a log mapper at all.
+		[Export ("message")]
+		string Message { get; set; }
+
+		[NullAllowed, Export ("error", ArgumentSemantic.Strong)]
+		DDLogEventError Error { get; }
+
+		[Export ("serviceName")]
+		string ServiceName { get; }
+
+		[Export ("environment")]
+		string Environment { get; }
+
+		[Export ("loggerName")]
+		string LoggerName { get; }
+
+		[Export ("loggerVersion")]
+		string LoggerVersion { get; }
+
+		[NullAllowed, Export ("threadName")]
+		string ThreadName { get; }
+
+		[Export ("applicationVersion")]
+		string ApplicationVersion { get; }
+
+		[Export ("applicationBuildNumber")]
+		string ApplicationBuildNumber { get; }
+
+		[NullAllowed, Export ("buildId")]
+		string BuildId { get; }
+
+		[NullAllowed, Export ("variant")]
+		string Variant { get; }
+
+		[Export ("dd", ArgumentSemantic.Strong)]
+		DDLogEventDd Dd { get; }
+
+		[Export ("os", ArgumentSemantic.Strong)]
+		DDLogEventOperatingSystem Os { get; }
+
+		[Export ("userInfo", ArgumentSemantic.Strong)]
+		DDLogEventUserInfo UserInfo { get; }
+
+		[NullAllowed, Export ("networkConnectionInfo", ArgumentSemantic.Strong)]
+		DDLogEventNetworkConnectionInfo NetworkConnectionInfo { get; }
+
+		[NullAllowed, Export ("mobileCarrierInfo", ArgumentSemantic.Strong)]
+		DDLogEventCarrierInfo MobileCarrierInfo { get; }
+
+		[Export ("attributes", ArgumentSemantic.Strong)]
+		DDLogEventAttributes Attributes { get; }
+
+		[NullAllowed, Export ("tags", ArgumentSemantic.Copy)]
+		string[] Tags { get; set; }
 	}
 }

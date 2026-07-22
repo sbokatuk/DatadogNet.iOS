@@ -1033,4 +1033,45 @@ namespace DatadogObjc
 		Average = 1,
 		Rare = 2
 	}
+
+	// The log-event model reached by DDLogsConfiguration.SetEventMapper. Objective Sharpie omitted
+	// the whole family, so the previous bindings had no way to inspect or redact a log before
+	// upload; these are transcribed from DatadogObjc-Swift.h.
+
+	[Native]
+	public enum DDLogEventStatus : long
+	{
+		Debug = 0,
+		Info = 1,
+		Notice = 2,
+		Warn = 3,
+		Error = 4,
+		Critical = 5,
+		Emergency = 6
+	}
+
+	[Native]
+	public enum DDLogEventReachability : long
+	{
+		Yes = 0,
+		Maybe = 1,
+		No = 2
+	}
+
+	[Native]
+	public enum DDLogEventRadioAccessTechnology : long
+	{
+		Gprs = 0,
+		Edge = 1,
+		Wcdma = 2,
+		Hsdpa = 3,
+		Hsupa = 4,
+		Cdma1x = 5,
+		CdmaEvdoRev0 = 6,
+		CdmaEvdoRevA = 7,
+		CdmaEvdoRevB = 8,
+		Ehrpd = 9,
+		Lte = 10,
+		Unknown = 11
+	}
 }

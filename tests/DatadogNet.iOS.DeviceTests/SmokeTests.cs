@@ -66,6 +66,8 @@ public static class SmokeTests
         new("exposes PLCrashReporter", ExposesCrashReporter),
         new("drives RUM and Logs through the ergonomic overloads", ErgonomicOverloadsWork),
         new("invokes a RUM event mapper", EventMapperIsInvoked),
+        new("invokes a Logs event mapper and redacts a message", LogEventMapperRedacts),
+        new("instruments a URLSession delegate by type", InstrumentsUrlSessionByType),
         new("stops the RUM session and the SDK instance", StopsCleanly),
     ];
 
@@ -134,41 +136,108 @@ public static class SmokeTests
         Report("view scopes, attribute conversion, logger and consent helpers all behaved");
     }
 
+    /// <summary>Counts mapper invocations, incremented from the blocks registered when features are enabled.</summary>
+    private static int viewEventsMapped;
+    private static int actionEventsMapped;
+    private static int logEventsMapped;
+    private static int logEventsRedacted;
+
     /// <summary>
-    /// Checks that the RUM event mappers actually fire, and that an event can be returned from
-    /// managed code back into Swift.
+    /// An NSUrlSession delegate for <see cref="InstrumentsUrlSessionByType"/> to instrument.
+    /// </summary>
+    /// <remarks>
+    /// [Register] matters: DDURLSessionInstrumentation takes an Objective-C Class, so the type has
+    /// to be visible to the Objective-C runtime for the lookup to resolve to anything.
+    /// </remarks>
+    [Register(nameof(InstrumentedSessionDelegate))]
+    private sealed class InstrumentedSessionDelegate : NSUrlSessionDataDelegate
+    {
+    }
+
+    /// <summary>
+    /// Checks that the RUM event mappers actually fire, and that an event can be handed back to
+    /// Swift from managed code.
     /// </summary>
     /// <remarks>
     /// Mappers are how an app redacts or drops events before they are uploaded, so they are the
     /// mechanism behind every "scrub the PII out of this" requirement. They are also the only part
-    /// of the binding that passes a managed delegate into Swift and returns a Swift object out of
-    /// it, so if block marshalling is wrong anywhere, it is wrong here - and the failure mode is a
-    /// crash inside the SDK's upload path, long after the call that registered the mapper.
+    /// of the binding that passes a managed delegate into Swift and gets a Swift object back out,
+    /// so if block marshalling is wrong anywhere it is wrong here - and the failure mode is a crash
+    /// inside the SDK's event-writing path, long after the call that registered the mapper.
+    /// <para>
+    /// The mappers are registered on the real configuration in <see cref="EnablesRum"/>, before
+    /// RUM is enabled, because that is the only time they can be set. This check then runs after
+    /// <see cref="DrivesRum"/> has produced events and asserts the blocks were actually reached.
+    /// </para>
     /// </remarks>
     private static void EventMapperIsInvoked()
     {
-        var seen = 0;
-
-        // A second SDK instance cannot be configured, and RUM was already enabled with no mapper,
-        // so this registers one on a fresh configuration object to prove the binding marshals -
-        // the mapper is exercised directly below rather than through an upload.
-        var configuration = new DDRUMConfiguration(applicationID: RumApplicationId);
-        configuration.SetViewEventMapper(view =>
+        // Events are mapped on the SDK's own queue as they are written, not synchronously with the
+        // call that produced them, so give that queue a moment before concluding anything.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline && (viewEventsMapped == 0 || actionEventsMapped == 0))
         {
-            seen++;
-            return view;
-        });
+            Thread.Sleep(100);
+        }
 
-        configuration.SetErrorEventMapper(error =>
+        Assert(viewEventsMapped > 0, "The view event mapper was never invoked.");
+        Assert(actionEventsMapped > 0, "The action event mapper was never invoked.");
+
+        Report($"mappers invoked: {viewEventsMapped} view, {actionEventsMapped} action");
+    }
+
+    /// <summary>
+    /// Checks that a Logs event mapper fires and that a rewritten message survives back into Swift.
+    /// </summary>
+    private static void LogEventMapperRedacts()
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline && logEventsRedacted == 0)
         {
-            seen++;
-            // Returning null asks the SDK to drop the event entirely, which is what a mapper does
-            // when it decides an event must never leave the device.
-            return error;
-        });
+            Thread.Sleep(100);
+        }
 
-        Assert(configuration.Handle != IntPtr.Zero, "Configuration with mappers has a null handle.");
-        Report($"registered view and error mappers (invocations so far: {seen})");
+        Assert(logEventsMapped > 0, "The log event mapper was never invoked.");
+        Assert(logEventsRedacted > 0, "The log event mapper never saw the message it was meant to redact.");
+
+        Report($"log events mapped: {logEventsMapped}, redacted: {logEventsRedacted}");
+    }
+
+    /// <summary>
+    /// Checks the type-based URLSession instrumentation helpers.
+    /// </summary>
+    /// <remarks>
+    /// This is the API Datadog documents for automatic resource tracking, and the raw binding takes
+    /// the delegate class as a bare IntPtr - a signature that accepts IntPtr.Zero happily and then
+    /// instruments nothing. The helpers resolve the Objective-C class from a managed Type and throw
+    /// if it does not exist, which is what this checks in both directions.
+    /// </remarks>
+    private static void InstrumentsUrlSessionByType()
+    {
+        DDURLSessionInstrumentation.Enable<InstrumentedSessionDelegate>();
+
+        var configuration = DDURLSessionInstrumentationConfiguration.Create<InstrumentedSessionDelegate>();
+        Assert(configuration.DelegateClass != IntPtr.Zero, "The configuration resolved a null delegate class.");
+        Assert(
+            configuration.DelegateType == typeof(InstrumentedSessionDelegate),
+            $"DelegateType round-tripped to {configuration.DelegateType?.Name ?? "null"}.");
+
+        // A type the Objective-C runtime has never heard of must be rejected rather than silently
+        // instrumenting nothing.
+        var rejected = false;
+        try
+        {
+            DDURLSessionInstrumentation.Enable(typeof(SmokeTests));
+        }
+        catch (ArgumentException)
+        {
+            rejected = true;
+        }
+
+        Assert(rejected, "A non-Objective-C type was accepted as a session delegate.");
+
+        DDURLSessionInstrumentation.Disable<InstrumentedSessionDelegate>();
+        Report("instrumented and disabled a URLSession delegate by type");
     }
 
     /// <summary>Every framework shipped as a dynamic framework, which is all but CrashReporter.</summary>
@@ -285,6 +354,20 @@ public static class SmokeTests
             UiKitActionsPredicate = new DDDefaultUIKitRUMActionsPredicate(),
         };
 
+        // Registered before EnableWith, which is the only point at which mappers can be set.
+        // Returning the event unchanged is the identity case; returning null would drop it.
+        configuration.SetViewEventMapper(view =>
+        {
+            Interlocked.Increment(ref viewEventsMapped);
+            return view;
+        });
+
+        configuration.SetActionEventMapper(action =>
+        {
+            Interlocked.Increment(ref actionEventsMapped);
+            return action;
+        });
+
         DDRUM.EnableWith(configuration);
 
         Assert(DDRUMMonitor.Shared is not null, "DDRUMMonitor.Shared was null after enabling RUM.");
@@ -313,7 +396,26 @@ public static class SmokeTests
 
     private static void EnablesLogsAndWritesEveryLevel()
     {
-        DDLogs.EnableWith(new DDLogsConfiguration(LocalEndpoint));
+        var logsConfiguration = new DDLogsConfiguration(LocalEndpoint);
+
+        // Registered before EnableWith, the only point at which a mapper can be set. Neither the
+        // DDLogEvent model nor setEventMapper: was bound before - Objective Sharpie omitted the
+        // whole family - so this is the first release in which a log can be redacted or dropped
+        // before upload.
+        logsConfiguration.SetEventMapper(logEvent =>
+        {
+            Interlocked.Increment(ref logEventsMapped);
+
+            if (logEvent.Message.Contains("secret", StringComparison.Ordinal))
+            {
+                logEvent.Message = "[redacted]";
+                Interlocked.Increment(ref logEventsRedacted);
+            }
+
+            return logEvent;
+        });
+
+        DDLogs.EnableWith(logsConfiguration);
 
         // The designated initializer takes all eight settings; there is no parameterless form.
         var logger = DDLogger.CreateWith(new DDLoggerConfiguration(
@@ -339,6 +441,9 @@ public static class SmokeTests
         logger.AddAttributeForKey("attempt", new NSNumber(1));
         logger.RemoveTagWithKey("suite");
         logger.RemoveAttributeForKey("attempt");
+
+        // Picked up by the mapper registered above and rewritten to "[redacted]".
+        logger.Info("this contains a secret value");
 
         Report("wrote six levels and round-tripped a tag and an attribute");
     }
