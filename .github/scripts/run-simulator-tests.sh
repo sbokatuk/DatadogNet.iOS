@@ -46,6 +46,15 @@ for package in objc core internal logs rum sessionreplay trace webviewtracking c
     rm -rf "${HOME}/.nuget/packages/datadognet.${package}.ios/${VERSION}"
 done
 
+# The app's own intermediate output has to go too, not just the NuGet cache. The native payload
+# is extracted out of the package into obj/ and copied into the .app, and neither step re-runs
+# when the package version string is unchanged - so a rebuilt package of the same version leaves
+# the *previous* build's xcframeworks embedded in the app. That produced a genuinely baffling
+# failure once: the frameworks were present and loaded, but every Objective-C class lookup missed,
+# because the app was running the previous release's binaries.
+rm -rf "${REPO_ROOT}/tests/DatadogNet.iOS.DeviceTests/obj" \
+       "${REPO_ROOT}/tests/DatadogNet.iOS.DeviceTests/bin"
+
 echo "==> building device tests (version=${VERSION}, tfm=${TARGET_FRAMEWORK}, sdk=${sdk_version})"
 ( cd "${SDK_DIR}" && dotnet build "${PROJECT}" \
     --configuration Release \

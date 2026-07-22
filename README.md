@@ -45,7 +45,7 @@ DDRUM.EnableWith(new DDRUMConfiguration(applicationID: "<RUM_APPLICATION_ID>"));
 ## Packages
 
 Eleven packages, one per native framework in the Datadog release. Versions are
-`<dd-sdk-ios version>.<binding revision>` — `2.17.0.2` is dd-sdk-ios **2.17.0**, binding revision
+`<dd-sdk-ios version>.<binding revision>` — `2.30.2.1` is dd-sdk-ios **2.30.2**, binding revision
 **2**. The fourth component belongs to this repository and advances when the bindings or packaging
 change while the native binaries stay put.
 
@@ -66,7 +66,7 @@ change while the native binaries stay put.
 Most apps need one line:
 
 ```xml
-<PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.2" />
+<PackageReference Include="DatadogNet.Objc.iOS" Version="2.30.2.1" />
 ```
 
 Add `DatadogNet.CrashReporting.iOS` for crash reporting and `DatadogNet.WebViewTracking.iOS` for
@@ -88,7 +88,7 @@ OS-provided Swift runtime, which is only ABI-stable from 12.2.
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.2" />
+  <PackageReference Include="DatadogNet.Objc.iOS" Version="2.30.2.1" />
 </ItemGroup>
 ```
 
@@ -101,7 +101,7 @@ Windows head does not try to restore them:
 
 ```xml
 <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
-  <PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.2" />
+  <PackageReference Include="DatadogNet.Objc.iOS" Version="2.30.2.1" />
 </ItemGroup>
 ```
 
@@ -207,18 +207,29 @@ helpers. Propagation style is chosen with `DDTracingHeaderType` — `Datadog`, `
 ### Session Replay
 
 ```csharp
-DDSessionReplay.EnableWith(new DDSessionReplayConfiguration(replaySampleRate: 100)
-{
-    DefaultPrivacyLevel = DDSessionReplayConfigurationPrivacyLevel.Mask,
-});
+using DatadogSessionReplay;
+
+DDSessionReplay.EnableWith(new DDSessionReplayConfiguration(
+    replaySampleRate: 100,
+    textAndInputPrivacyLevel: DDTextAndInputPrivacyLevel.MaskAll,
+    imagePrivacyLevel: DDImagePrivacyLevel.MaskAll,
+    touchPrivacyLevel: DDTouchPrivacyLevel.Hide));
 ```
 
-Requires RUM. Privacy levels are `Allow`, `MaskUserInput` and `Mask`; the level decides what is
-redacted *on the device*, before anything is uploaded. Loosen it deliberately.
+Requires RUM. The three levels decide what is redacted *on the device*, before anything is
+uploaded, and the initializer requires all three so the choice is never left implicit. Loosen them
+deliberately.
 
-> `DDSessionReplay` exists in two namespaces — `DatadogObjc` and `DatadogSessionReplay`. They are
-> different native classes that do the same thing. Prefer the `DatadogObjc` one so a single
-> `using DatadogObjc;` covers the whole SDK; importing both namespaces makes the name ambiguous.
+A single view can override the session-wide levels:
+
+```csharp
+var overrides = myView.GetDdSessionReplayPrivacyOverrides();
+overrides.TextAndInputPrivacy = DDTextAndInputPrivacyLevelOverride.MaskAll;
+overrides.Hide = new NSNumber(true);
+```
+
+Set `StartRecordingImmediately = false` to enable the feature without recording, then call
+`DDSessionReplay.StartRecording()` once the user has consented, and `StopRecording()` to pause.
 
 ### Crash reporting
 
@@ -315,23 +326,23 @@ and throws if it does not exist.
 
 ## API coverage
 
-The bindings cover **346 of the 347 public Objective-C types** Datadog declares for 2.17.0, and
-every documented feature is reachable from C#. Verified by diffing the bound selectors against the
-`-Swift.h` header each xcframework ships, not against the documentation.
+Every public Objective-C type Datadog declares for 2.30.2 is bound except one, and every documented
+feature is reachable from C#. Measured by parsing the `-Swift.h` header each xcframework ships and
+diffing it against the bound selectors — not by reading the documentation.
 
-The one unbound type is **`DDUIPressRUMActionsPredicate`**, which reports Siri Remote presses. The
-protocol is declared in the iOS header, but nothing in the iOS slice accepts it — the property that
-consumes it exists only on tvOS — so it is unreachable from a `net*-ios` app.
+The unbound type is **`DDRUMLongTaskEventLongTaskScripts`**, with the `scripts` property that
+returns it. It describes JavaScript long tasks, is reachable only from inside a RUM long-task event
+mapper, and a native iOS app does not produce them.
 
-Three groups of *members* are also deliberately not bound:
+Three further groups of *members* are deliberately not bound:
 
-- **`DDRUMLongTaskEventLongTaskScripts` and `DDRUMVitalEventVital.details`** — reachable only from
-  inside a long-task or vital event mapper, and describe JavaScript long tasks, which a native iOS
-  app does not produce.
-- **Four `DDTelemetryConfigurationEventTelemetryConfiguration` properties** covering Session Replay
-  privacy levels. These are read-only fields on a *telemetry* event describing what the SDK
-  reported about itself; they are not configuration knobs. The real knob,
-  `DDSessionReplayConfiguration.DefaultPrivacyLevel`, is bound.
+- **Four `DDTelemetryConfigurationEventTelemetryConfiguration` properties** named after the Session
+  Replay privacy levels. These are read-only fields on a *telemetry* event, describing what the SDK
+  reported about its own configuration; they are not knobs. The real ones are on
+  `DDSessionReplayConfiguration`, and all of those are bound.
+- **`initWithSamplingRate:` and `initWithSamplingRate:injectEncoding:` on the tracing header
+  writers** — deprecated upstream, and differing from the bound `initWithSampleRate:` forms only by
+  argument label, which Objective Sharpie cannot project as two separate initializers.
 - **Three `URLSession` overloads on `DatadogURLSessionDelegate`** — see
   [the note in that binding](src/DatadogNet.Internal.iOS/ApiDefinitions.cs); binding them crashes
   every consuming app at startup, and they remain callable under their inherited names.
@@ -345,7 +356,7 @@ edit — no `using` directive and no call site changes.
 
 ```diff
 -<PackageReference Include="DatadogObjc.iOS" Version="2.17.0.1" />
-+<PackageReference Include="DatadogNet.Objc.iOS" Version="2.17.0.2" />
++<PackageReference Include="DatadogNet.Objc.iOS" Version="2.30.2.1" />
 ```
 
 | Old | New |
@@ -374,7 +385,7 @@ selector is already registered on the member 'DidFinishCollectingMetrics'.
 ```
 
 **`CrashReporter` is versioned with everything else.** It was `1.11.2.1`, tracking PLCrashReporter
-upstream; it is now `2.17.0.2` like the rest, because it ships inside the same Datadog release and
+upstream; it is now `2.30.2.1` like the rest, because it ships inside the same Datadog release and
 the old numbering made it impossible to tell which Datadog build a given package belonged to.
 
 **`net7.0-ios` is gone, `net9`/`net10` are new.** The old packages targeted `net7.0-ios16.1` and
@@ -439,7 +450,7 @@ sample directly, as the command in the previous section does.
 Requires macOS, Xcode, and the .NET 9 and .NET 10 SDKs with the `ios` workload.
 
 ```bash
-./build/FetchXcFrameworks.sh    # ~116 MB, verified against build/checksums.txt
+./build/FetchXcFrameworks.sh    # ~100 MB, verified against build/checksums.txt
 ./build/BuildNugets.sh          # packs all eleven into artifacts/
 dotnet test tests/DatadogNet.iOS.PackageTests
 ```
@@ -447,7 +458,7 @@ dotnet test tests/DatadogNet.iOS.PackageTests
 Run the on-simulator smoke tests against the packed packages:
 
 ```bash
-./.github/scripts/run-simulator-tests.sh 2.17.0.2 net9.0-ios18.0
+./.github/scripts/run-simulator-tests.sh 2.30.2.1 net9.0-ios18.0
 ```
 
 Build and run the sample:
@@ -493,7 +504,7 @@ dropping a package — update the `FRAMEWORKS` list, add or remove the binding p
 
 ## Releasing
 
-Tag it. `v2.17.0.2` builds, tests, publishes all eleven packages to nuget.org via trusted
+Tag it. `v2.30.2.1` builds, tests, publishes all eleven packages to nuget.org via trusted
 publishing, and creates a GitHub release. The tag drives which native SDK is bound, so an older
 line can be released by tagging it.
 
@@ -509,9 +520,8 @@ Curated notes in `docs/release-notes/<version>.md` replace the generated commit 
 common cause. Set `DDDatadog.VerbosityLevel = DDSDKVerbosityLevel.Debug` to see the SDK's own
 diagnostics in the Xcode console.
 
-**`DDSessionReplay` is an ambiguous reference.** You have imported both `DatadogObjc` and
-`DatadogSessionReplay`. Use the `DatadogObjc` one, or alias:
-`using SessionReplay = DatadogSessionReplay;`.
+**`DDSessionReplay` could not be found.** It moved out of the `DatadogObjc` namespace in
+dd-sdk-ios 2.19.0 and now lives only in `DatadogSessionReplay`. Add `using DatadogSessionReplay;`.
 
 **`This version of .NET for iOS requires Xcode 26.0`.** Only affects `net10.0-ios26.0`. See
 [Building locally](#building-locally).

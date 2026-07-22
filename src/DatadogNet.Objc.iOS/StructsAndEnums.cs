@@ -938,13 +938,6 @@ namespace DatadogObjc
 		Critical = 4
 	}
 
-	[Native]
-	public enum DDSessionReplayConfigurationPrivacyLevel : long
-	{
-		Allow = 0,
-		Mask = 1,
-		MaskUserInput = 2
-	}
 
 	[Native]
 	public enum DDTelemetryConfigurationEventSource : long
@@ -1088,5 +1081,117 @@ namespace DatadogObjc
 		Cellular = 2,
 		Loopback = 3,
 		Other = 4
+	}
+
+	// ---------------------------------------------------------------------------------------
+	// Added by dd-sdk-ios 2.30.2. Mostly RUM event-model detail reached through the event
+	// mappers; DDCoreLoggerLevel belongs to the internal-telemetry logger added in 2.19.0.
+	// ---------------------------------------------------------------------------------------
+
+	[Native]
+	public enum DDCoreLoggerLevel : long
+	{
+		Debug = 0,
+		Warn = 1,
+		Error = 2,
+		Critical = 3
+	}
+
+	[Native]
+	public enum DDRUMActionEventDDActionNameSource : long
+	{
+		None = 0,
+		CustomAttribute = 1,
+		MaskPlaceholder = 2,
+		StandardAttribute = 3,
+		TextContent = 4,
+		MaskDisallowed = 5,
+		Blank = 6
+	}
+
+	[Native]
+	public enum DDRUMLongTaskEventDDProfilingErrorReason : long
+	{
+		None = 0,
+		NotSupportedByBrowser = 1,
+		FailedToLazyLoad = 2,
+		MissingDocumentPolicyHeader = 3,
+		UnexpectedException = 4
+	}
+
+	[Native]
+	public enum DDRUMLongTaskEventDDProfilingStatus : long
+	{
+		None = 0,
+		Starting = 1,
+		Running = 2,
+		Stopped = 3,
+		Error = 4
+	}
+
+	[Native]
+	public enum DDRUMResourceEventResourceDeliveryType : long
+	{
+		None = 0,
+		Cache = 1,
+		NavigationalPrefetch = 2,
+		Other = 3
+	}
+
+	[Native]
+	public enum DDRUMViewEventDDProfilingErrorReason : long
+	{
+		None = 0,
+		NotSupportedByBrowser = 1,
+		FailedToLazyLoad = 2,
+		MissingDocumentPolicyHeader = 3,
+		UnexpectedException = 4
+	}
+
+	[Native]
+	public enum DDRUMViewEventDDProfilingStatus : long
+	{
+		None = 0,
+		Starting = 1,
+		Running = 2,
+		Stopped = 3,
+		Error = 4
+	}
+
+	[Native]
+	public enum DDRUMVitalEventVitalFailureReason : long
+	{
+		None = 0,
+		Error = 1,
+		Abandoned = 2,
+		Other = 3
+	}
+
+	[Native]
+	public enum DDRUMVitalEventVitalStepType : long
+	{
+		None = 0,
+		Start = 1,
+		Update = 2,
+		Retry = 3,
+		End = 4
+	}
+
+	[Native]
+	public enum DDTelemetryConfigurationEventTelemetryConfigurationSessionPersistence : long
+	{
+		None = 0,
+		LocalStorage = 1,
+		Cookie = 2
+	}
+
+	[Native]
+	public enum DDTelemetryConfigurationEventTelemetryConfigurationTrackFeatureFlagsForEvents : long
+	{
+		None = 0,
+		Vital = 1,
+		Resource = 2,
+		Action = 3,
+		LongTask = 4
 	}
 }

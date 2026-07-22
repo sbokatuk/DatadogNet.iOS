@@ -1,6 +1,7 @@
 using System;
 using DatadogCore;
 using Foundation;
+using ObjCRuntime;
 
 namespace DatadogCore
 {
@@ -25,6 +26,14 @@ namespace DatadogCore
 		// @property (readonly, atomic) BOOL isActivePrewarm;
 		[Export ("isActivePrewarm")]
 		bool IsActivePrewarm { get; }
+
+		// -(instancetype _Nonnull)initWithProcessInfo:(NSProcessInfo * _Nonnull)processInfo;
+		[Export ("initWithProcessInfo:")]
+		NativeHandle Constructor (NSProcessInfo processInfo);
+
+		// -(void)observeNotificationCenter:(NSNotificationCenter * _Nonnull)notificationCenter;
+		[Export ("observeNotificationCenter:")]
+		void ObserveNotificationCenter (NSNotificationCenter notificationCenter);
 
 		// -(void)setApplicationDidBecomeActiveCallback:(UIApplicationDidBecomeActiveCallback _Nonnull)callback;
 		[Export ("setApplicationDidBecomeActiveCallback:")]

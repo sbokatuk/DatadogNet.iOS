@@ -35,6 +35,17 @@ namespace CrashReporter
 		[Export ("initWithSignalHandlerType:symbolicationStrategy:shouldRegisterUncaughtExceptionHandler:basePath:")]
 		NativeHandle Constructor (PLCrashReporterSignalHandlerType signalHandlerType, PLCrashReporterSymbolicationStrategy symbolicationStrategy, bool shouldRegisterUncaughtExceptionHandler, string basePath);
 
+		// -(instancetype)initWithSignalHandlerType:symbolicationStrategy:
+		//     shouldRegisterUncaughtExceptionHandler:basePath:maxReportBytes:
+		// Added in PLCrashReporter 1.12, shipped from dd-sdk-ios 2.25.0.
+		[Export ("initWithSignalHandlerType:symbolicationStrategy:shouldRegisterUncaughtExceptionHandler:basePath:maxReportBytes:")]
+		NativeHandle Constructor (PLCrashReporterSignalHandlerType signalHandlerType, PLCrashReporterSymbolicationStrategy symbolicationStrategy, bool shouldRegisterUncaughtExceptionHandler, string basePath, nuint maxReportBytes);
+
+		// @property (readonly, nonatomic) NSUInteger maxReportBytes;
+		// The cap on a generated crash report. Reports above it are truncated rather than dropped.
+		[Export ("maxReportBytes")]
+		nuint MaxReportBytes { get; }
+
 		// @property (readonly, nonatomic) NSString * basePath;
 		[Export ("basePath")]
 		string BasePath { get; }

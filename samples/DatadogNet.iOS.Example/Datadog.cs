@@ -1,5 +1,6 @@
 using DatadogCrashReporting;
 using DatadogObjc;
+using DatadogSessionReplay;
 
 namespace DatadogNetExample;
 
@@ -113,19 +114,17 @@ public static class Datadog
     {
         // Session Replay requires RUM, so it is enabled last.
         //
-        // MaskAll is the default here on purpose. Replay records the screen, and the privacy level
-        // decides what is redacted before anything leaves the device: MaskUserInput hides only what
-        // the user typed, while Mask also hides all text and images. Loosen this deliberately, not
-        // by accident.
-        // DDSessionReplay exists in two namespaces: this one, from DatadogNet.Objc.iOS, and
-        // another in DatadogNet.SessionReplay.iOS. They are not the same class - each wraps a
-        // different native type (_TtC11DatadogObjc15DDSessionReplay against
-        // _TtC20DatadogSessionReplay15DDSessionReplay) - but they do the same thing. Prefer the
-        // DatadogObjc one, as here, so a single `using DatadogObjc;` covers the whole SDK;
-        // importing both namespaces makes the name ambiguous and needs an alias to resolve.
-        DDSessionReplay.EnableWith(new DDSessionReplayConfiguration(replaySampleRate: 100)
-        {
-            DefaultPrivacyLevel = DDSessionReplayConfigurationPrivacyLevel.Mask,
-        });
+        // From dd-sdk-ios 2.19.0 the single defaultPrivacyLevel is replaced by three independent
+        // levels, and they are required by the initializer rather than defaulted - so the choice
+        // is made deliberately rather than inherited. Replay records the screen, and these decide
+        // what is redacted *on the device*, before anything is uploaded.
+        //
+        // These are the most private settings: mask every text and input, mask every image, and
+        // hide touches. Loosen them deliberately, not by accident.
+        DDSessionReplay.EnableWith(new DDSessionReplayConfiguration(
+            replaySampleRate: 100,
+            textAndInputPrivacyLevel: DDTextAndInputPrivacyLevel.MaskAll,
+            imagePrivacyLevel: DDImagePrivacyLevel.MaskAll,
+            touchPrivacyLevel: DDTouchPrivacyLevel.Hide));
     }
 }

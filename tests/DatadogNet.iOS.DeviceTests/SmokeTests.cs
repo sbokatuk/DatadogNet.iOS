@@ -3,16 +3,14 @@ using CrashReporter;
 using DatadogCrashReporting;
 using DatadogInternal;
 using DatadogObjc;
-// DatadogObjc declares its own DDSessionReplay, DDSessionReplayConfiguration and privacy-level
-// enum, wrapping different native classes from the identically named ones here
-// (_TtC11DatadogObjc15DDSessionReplay against _TtC20DatadogSessionReplay15DDSessionReplay). Both
-// work; importing both namespaces unqualified is what does not. These tests deliberately drive the
-// DatadogSessionReplay ones, so that package's own binding is exercised rather than only the
-// façade's - the sample shows the DatadogObjc route an app would normally take.
-using SessionReplay = DatadogSessionReplay;
+// Session Replay lives only in DatadogSessionReplay from dd-sdk-ios 2.19.0 onwards; DatadogObjc
+// used to declare a parallel set of DD* Session Replay types and no longer does, so there is
+// nothing left to disambiguate.
+using DatadogSessionReplay;
 using DatadogWebViewTracking;
 using Foundation;
 using ObjCRuntime;
+using UIKit;
 
 namespace DatadogNet.iOS.DeviceTests;
 
@@ -60,6 +58,9 @@ public static class SmokeTests
         new("enables Logs and writes every level", EnablesLogsAndWritesEveryLevel),
         new("enables Trace", EnablesTrace),
         new("enables Session Replay", EnablesSessionReplay),
+        new("applies per-view Session Replay privacy overrides", SessionReplayPrivacyOverridesApply),
+        new("sets and clears account and user info", SetsAccountInfo),
+        new("exposes the new RUM attribute APIs and the AP2 site", NewRumAndSiteApis),
         new("enables crash reporting", EnablesCrashReporting),
         new("constructs a URLSession delegate for first-party tracing", ConstructsUrlSessionDelegate),
         new("exposes WebView tracking", ExposesWebViewTracking),
@@ -476,15 +477,89 @@ public static class SmokeTests
 
     private static void EnablesSessionReplay()
     {
-        var configuration = new SessionReplay.DDSessionReplayConfiguration(replaySampleRate: 100)
+
+        // The three fine-grained levels replaced the single defaultPrivacyLevel in 2.19.0, and the
+        // initializer requires them, so the choice cannot be left implicit.
+        var configuration = new DDSessionReplayConfiguration(
+            replaySampleRate: 100,
+            textAndInputPrivacyLevel: DDTextAndInputPrivacyLevel.MaskAll,
+            imagePrivacyLevel: DDImagePrivacyLevel.MaskAll,
+            touchPrivacyLevel: DDTouchPrivacyLevel.Hide)
         {
-            DefaultPrivacyLevel = SessionReplay.DDSessionReplayConfigurationPrivacyLevel.Mask,
             CustomEndpoint = LocalEndpoint,
+            // Recording is started explicitly below rather than on enable, which is what an app
+            // does when it wants replay only after consent or a particular screen.
+            StartRecordingImmediately = false,
         };
 
-        SessionReplay.DDSessionReplay.EnableWith(configuration);
+        DDSessionReplay.EnableWith(configuration);
 
-        Report($"Session Replay enabled at privacy level {configuration.DefaultPrivacyLevel}");
+        Assert(
+            configuration.TextAndInputPrivacyLevel == DDTextAndInputPrivacyLevel.MaskAll,
+            "textAndInputPrivacyLevel did not round-trip.");
+        Assert(
+            configuration.TouchPrivacyLevel == DDTouchPrivacyLevel.Hide,
+            "touchPrivacyLevel did not round-trip.");
+
+        DDSessionReplay.StartRecording();
+        DDSessionReplay.StopRecording();
+
+        Report("Session Replay enabled with fine-grained privacy, then started and stopped");
+    }
+
+    /// <summary>
+    /// Per-view privacy overrides, added in 2.19.0 as a category on UIView.
+    /// </summary>
+    private static void SessionReplayPrivacyOverridesApply()
+    {
+        var view = new UIView();
+        var overrides = view.GetDdSessionReplayPrivacyOverrides();
+
+        Assert(overrides is not null, "UIView returned no privacy overrides object.");
+
+        overrides.TextAndInputPrivacy = DDTextAndInputPrivacyLevelOverride.MaskAll;
+        overrides.ImagePrivacy = DDImagePrivacyLevelOverride.MaskAll;
+        overrides.TouchPrivacy = DDTouchPrivacyLevelOverride.Hide;
+        overrides.Hide = new NSNumber(true);
+
+        // Read back through a fresh accessor call: the override object is attached to the view, so
+        // a value set through one handle must be visible through another.
+        var again = view.GetDdSessionReplayPrivacyOverrides();
+        Assert(
+            again.TextAndInputPrivacy == DDTextAndInputPrivacyLevelOverride.MaskAll,
+            $"Override did not stick: {again.TextAndInputPrivacy}");
+        Assert(again.Hide?.BoolValue == true, "Hide override did not stick.");
+
+        Report("per-view privacy overrides set and read back");
+    }
+
+    /// <summary>Account info and the user-info clearing APIs, added in 2.29.0 and 2.30.0.</summary>
+    private static void SetsAccountInfo()
+    {
+        DDDatadog.SetAccountInfoWithAccountId("acct-1", "Test Account", DatadogAttributes.Empty);
+        DDDatadog.AddAccountExtraInfo(
+            new NSDictionary<NSString, NSObject>(new NSString("tier"), new NSString("premium")));
+        DDDatadog.ClearAccountInfo();
+
+        // setUserInfo requires an id from 2.24.0, and clearUserInfo arrived in 2.30.0.
+        DDDatadog.SetUserInfoWithUserId("user-2", "User Two", "user2@example.invalid", DatadogAttributes.Empty);
+        DDDatadog.ClearUserInfo();
+
+        Report("account info set, extended and cleared; user info cleared");
+    }
+
+    /// <summary>Attribute APIs added to the RUM monitor in 2.23.0, and the AP2 site added in 2.29.0.</summary>
+    private static void NewRumAndSiteApis()
+    {
+        var monitor = DDRUMMonitor.Shared;
+
+        monitor.AddAttributes(
+            new NSDictionary<NSString, NSObject>(new NSString("build.channel"), new NSString("e2e")));
+        monitor.RemoveAttributesForKeys(["build.channel"]);
+
+        Assert(DDSite.Ap2 is not null, "DDSite.Ap2 is missing.");
+
+        Report("RUM addAttributes/removeAttributes and DDSite.Ap2 available");
     }
 
     private static void EnablesCrashReporting()
