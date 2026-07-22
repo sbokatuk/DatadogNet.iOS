@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CrashReporter;
 using DatadogCrashReporting;
 using DatadogInternal;
@@ -60,8 +61,74 @@ public static class SmokeTests
         new("constructs a URLSession delegate for first-party tracing", ConstructsUrlSessionDelegate),
         new("exposes WebView tracking", ExposesWebViewTracking),
         new("exposes PLCrashReporter", ExposesCrashReporter),
+        new("drives RUM and Logs through the ergonomic overloads", ErgonomicOverloadsWork),
         new("stops the RUM session and the SDK instance", StopsCleanly),
     ];
+
+    /// <summary>
+    /// Exercises the hand-written convenience layer, which the generated binding knows nothing
+    /// about and which no other check would touch.
+    /// </summary>
+    private static void ErgonomicOverloadsWork()
+    {
+        var monitor = DDRUMMonitor.Shared;
+
+        // The scope form: the view is stopped when the using block is left, whatever happens in it.
+        using (var view = monitor.StartView("ergonomic-view", "Ergonomic View"))
+        {
+            Assert(view.Key == "ergonomic-view", $"Scope reported the wrong key: {view.Key}");
+
+            monitor.AddAction(DDRUMActionType.Tap, "ergonomic-action", new Dictionary<string, object?>
+            {
+                ["string"] = "text",
+                ["int"] = 42,
+                ["double"] = 1.5,
+                ["bool"] = true,
+                ["null"] = null,
+                ["date"] = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                ["list"] = new[] { 1, 2, 3 },
+                ["nested"] = new Dictionary<string, object?> { ["inner"] = "value" },
+            });
+
+            monitor.AddError(new InvalidOperationException("ergonomic failure"));
+        }
+
+        // Disposing a scope whose view was already stopped by hand must not stop a second time.
+        var second = monitor.StartView("ergonomic-view-2");
+        monitor.StopView("ergonomic-view-2");
+        second.Dispose();
+
+        // An attribute type with no Objective-C representation must be rejected loudly rather than
+        // silently dropped, since a missing attribute is invisible until someone queries for it.
+        var rejected = false;
+        try
+        {
+            DatadogAttributes.From(new Dictionary<string, object?> { ["bad"] = new object() });
+        }
+        catch (ArgumentException)
+        {
+            rejected = true;
+        }
+
+        Assert(rejected, "An unconvertible attribute value was accepted instead of throwing.");
+
+        // The logger convenience form, including the exception overload that folds error.kind,
+        // error.message and error.stack into the payload.
+        var logger = DDLogger.Create(name: "ergonomics", printLogsToConsole: false);
+        logger.Log(DDLogLevel.Info, "ergonomic info");
+        logger.Log(DDLogLevel.Error, "ergonomic error", new InvalidOperationException("boom"));
+
+        // A read-only dictionary that is deliberately not an IDictionary, which is what the naive
+        // copy in the exception path used to throw on.
+        IReadOnlyDictionary<string, object?> readOnly =
+            new ReadOnlyDictionary<string, object?>(new Dictionary<string, object?> { ["k"] = "v" });
+        logger.Log(DDLogLevel.Warn, "ergonomic warn", new Exception("boom"), readOnly);
+
+        DDDatadog.SetUserInfo("ergonomic-user");
+        DDDatadog.SetTrackingConsent(TrackingConsent.Granted);
+
+        Report("view scopes, attribute conversion, logger and consent helpers all behaved");
+    }
 
     /// <summary>Every framework shipped as a dynamic framework, which is all but CrashReporter.</summary>
     private static readonly string[] DynamicFrameworks =

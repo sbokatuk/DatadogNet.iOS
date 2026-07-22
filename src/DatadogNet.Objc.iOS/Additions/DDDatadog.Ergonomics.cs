@@ -1,3 +1,8 @@
+// Nullable annotations are enabled per file rather than for the project: the generated
+// binding sources are not written against a nullable context, and switching the whole
+// project over would bury real warnings here under hundreds of generated ones.
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using Foundation;

@@ -1,3 +1,8 @@
+// Nullable annotations are enabled per file rather than for the project: the generated
+// binding sources are not written against a nullable context, and switching the whole
+// project over would bury real warnings here under hundreds of generated ones.
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using Foundation;
@@ -102,9 +107,15 @@ namespace DatadogObjc
 			var payload = attributes;
 
 			if (exception is not null) {
-				var merged = attributes is null
-					? new Dictionary<string, object?> ()
-					: new Dictionary<string, object?> ((IDictionary<string, object?>) attributes);
+				// Copied key by key rather than through the Dictionary(IDictionary) constructor:
+				// the parameter is an IReadOnlyDictionary, and plenty of those - anything from
+				// ToFrozenDictionary to an ImmutableDictionary - do not also implement IDictionary,
+				// so casting would throw for exactly the callers being helped here.
+				var merged = new Dictionary<string, object?> ();
+				if (attributes is not null) {
+					foreach (var pair in attributes)
+						merged[pair.Key] = pair.Value;
+				}
 
 				// Datadog's own reserved attribute names for an error, so these render as an error
 				// in the Logs UI rather than as three unrelated custom attributes.
@@ -116,24 +127,28 @@ namespace DatadogObjc
 
 			var native = DatadogAttributes.From (payload);
 
+			// The (message, attributes) overload, not (message, error, attributes): the native
+			// error parameter is _Nonnull, so the generated binding throws ArgumentNullException
+			// rather than passing nil, and there is nothing to pass anyway - the exception has
+			// already been folded into the attributes above.
 			switch (level) {
 			case DDLogLevel.Debug:
-				Debug (message, null, native);
+				Debug (message, native);
 				break;
 			case DDLogLevel.Info:
-				Info (message, null, native);
+				Info (message, native);
 				break;
 			case DDLogLevel.Notice:
-				Notice (message, null, native);
+				Notice (message, native);
 				break;
 			case DDLogLevel.Warn:
-				Warn (message, null, native);
+				Warn (message, native);
 				break;
 			case DDLogLevel.Error:
-				Error (message, null, native);
+				Error (message, native);
 				break;
 			case DDLogLevel.Critical:
-				Critical (message, null, native);
+				Critical (message, native);
 				break;
 			default:
 				throw new ArgumentOutOfRangeException (nameof (level), level, "Unknown log level.");
