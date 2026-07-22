@@ -370,3 +370,5 @@ artifacts/*
 # Output of .github/scripts/run-simulator-tests.sh. CI uploads it as an artifact on failure; a
 # local run leaves it in the working tree.
 /simulator-tests.log
+
+.DS_Store
