@@ -17,7 +17,7 @@ namespace DatadogCore
 		/// <param name="email">The user's email address, if you have one.</param>
 		/// <param name="extraInfo">Any further attributes to attach to the user.</param>
 		/// <remarks>
-		/// The bound <see cref="SetUserInfoWithUserId"/> takes all four arguments and no defaults,
+		/// The bound <c>SetUserInfoWithUserId</c> takes all four arguments and no defaults,
 		/// so setting only an id means passing two nulls and an empty dictionary.
 		/// </remarks>
 		public static void SetUserInfo (

@@ -94,6 +94,7 @@ public class PackageLayoutTests
     public void Native_payload_carries_exactly_its_own_xcframework(string name)
     {
         var spec = Packages.Spec(name);
+        var framework = spec.Framework!;  // BindingNames excludes the meta-package
 
         using var package = Packages.OpenPackage(name);
         using var payload = Packages.OpenNativePayload(package, name, PayloadTargetFramework);
@@ -107,7 +108,7 @@ public class PackageLayoutTests
         // One package, one framework. A package that shipped two would mean the shared libs/
         // directory leaked into a NativeReference glob, and consumers would end up with the same
         // framework embedded twice from two packages - a duplicate-symbol link failure.
-        Assert.Equal([$"{spec.Framework}.xcframework"], present);
+        Assert.Equal([$"{framework}.xcframework"], present);
     }
 
     [Theory]
@@ -115,11 +116,12 @@ public class PackageLayoutTests
     public void Native_payload_carries_ios_slices_only(string name)
     {
         var spec = Packages.Spec(name);
+        var framework = spec.Framework!;  // BindingNames excludes the meta-package
 
         using var package = Packages.OpenPackage(name);
         using var payload = Packages.OpenNativePayload(package, name, PayloadTargetFramework);
 
-        var slices = SlicesOf(payload, spec.Framework);
+        var slices = SlicesOf(payload, framework);
 
         // Device and simulator, and nothing else. The upstream archive also ships tvOS for every
         // framework, plus macCatalyst, macOS, watchOS and visionOS for CrashReporter and
@@ -127,7 +129,7 @@ public class PackageLayoutTests
         // net*-ios binding can never reach.
         Assert.All(slices, slice => Assert.True(
             Packages.IsIosSlice(slice),
-            $"{spec.Framework}.xcframework carries a non-iOS slice '{slice}'."));
+            $"{framework}.xcframework carries a non-iOS slice '{slice}'."));
 
         Assert.Single(slices, Packages.IsSimulatorSlice);
         Assert.Single(slices, slice => !Packages.IsSimulatorSlice(slice));
@@ -138,6 +140,7 @@ public class PackageLayoutTests
     public void Native_payload_carries_no_debug_symbols(string name)
     {
         var spec = Packages.Spec(name);
+        var framework = spec.Framework!;  // BindingNames excludes the meta-package
 
         using var package = Packages.OpenPackage(name);
         using var payload = Packages.OpenNativePayload(package, name, PayloadTargetFramework);
@@ -158,12 +161,13 @@ public class PackageLayoutTests
     public void Xcframework_manifest_matches_the_slices_actually_shipped(string name)
     {
         var spec = Packages.Spec(name);
+        var framework = spec.Framework!;  // BindingNames excludes the meta-package
 
         using var package = Packages.OpenPackage(name);
         using var payload = Packages.OpenNativePayload(package, name, PayloadTargetFramework);
 
-        var manifest = payload.GetEntry($"{spec.Framework}.xcframework/Info.plist");
-        Assert.True(manifest is not null, $"{spec.Framework}.xcframework has no Info.plist.");
+        var manifest = payload.GetEntry($"{framework}.xcframework/Info.plist");
+        Assert.True(manifest is not null, $"{framework}.xcframework has no Info.plist.");
 
         using var reader = new StreamReader(manifest!.Open());
         var text = reader.ReadToEnd();
@@ -177,7 +181,7 @@ public class PackageLayoutTests
         }
 
         // Every slice present on disk must be advertised, whatever upstream named it.
-        foreach (var slice in SlicesOf(payload, spec.Framework))
+        foreach (var slice in SlicesOf(payload, framework))
         {
             Assert.Contains(slice, text, StringComparison.Ordinal);
         }
@@ -191,6 +195,7 @@ public class PackageLayoutTests
     public void Package_declares_the_expected_dependencies_for_every_target_framework(string name)
     {
         var spec = Packages.Spec(name);
+        var framework = spec.Framework!;  // BindingNames excludes the meta-package
         var expected = spec.DependsOn.Select(Packages.PackageId).OrderBy(id => id).ToList();
 
         using var package = Packages.OpenPackage(name);
@@ -309,7 +314,7 @@ public class PackageLayoutTests
         // that replaced the deleted DatadogObjc framework. Shipping an assembly or a native
         // payload would mean it had quietly become a real package again - and, worse, would embed
         // a second copy of frameworks its dependencies already carry.
-        Assert.Empty(package.Entries.Where(entry => entry.FullName.StartsWith("lib/", StringComparison.Ordinal)));
+        Assert.DoesNotContain(package.Entries, entry => entry.FullName.StartsWith("lib/", StringComparison.Ordinal));
 
         var nuspec = Packages.ReadNuspec(package, Packages.MetaPackage);
         var groups = nuspec.Descendants()
@@ -323,8 +328,8 @@ public class PackageLayoutTests
             Packages.ExpectedTargetFrameworks.OrderBy(tfm => tfm),
             groups.Select(group => group.Attribute("targetFramework")?.Value).OrderBy(tfm => tfm));
 
-        Assert.All(groups, group => Assert.NotEmpty(
-            group.Elements().Where(element => element.Name.LocalName == "dependency")));
+        Assert.All(groups, group => Assert.Contains(
+            group.Elements(), element => element.Name.LocalName == "dependency"));
     }
 
     [Fact]
