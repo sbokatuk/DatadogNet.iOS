@@ -41,8 +41,10 @@ printf '{ "sdk": { "version": "%s", "rollForward": "latestFeature" } }\n' "${sdk
 # NuGet caches by package id + version, so rebuilding a version that was already restored once
 # silently reuses the stale copy. CI versions are unique, but locally you will re-pack the same
 # version repeatedly and test yesterday's bits without this. All eleven are cleared, not just the
-# three referenced directly, because the rest arrive as transitive dependencies.
-for package in objc core internal logs rum sessionreplay trace webviewtracking crashreporting crashreporter opentelemetryapi; do
+# ones referenced directly, because the rest arrive as transitive dependencies. crashreporter
+# is gone from the list: dd-sdk-ios 3.0 replaced PLCrashReporter with KSCrash, which is linked
+# into DatadogCrashReporting rather than shipped as a package of its own.
+for package in objc core internal logs rum sessionreplay trace webviewtracking crashreporting flags profiling opentelemetryapi; do
     rm -rf "${HOME}/.nuget/packages/datadognet.${package}.ios/${VERSION}"
 done
 

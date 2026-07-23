@@ -47,18 +47,23 @@
 	<!--
 	  Resolved from ./artifacts through the local feed in the repository's NuGet.config, not from
 	  nuget.org, so the sample always exercises your local build. Run ./build/BuildNugets.sh first.
-	  Pass -p:DatadogPackageVersion=2.17.0.1-rc.1 to point it at a specific build.
+	  Pass -p:DatadogPackageVersion=3.14.0.1-rc.1 to point it at a specific build.
 
-	  Objc is the façade and pulls in Core, Internal, Logs, RUM, SessionReplay and Trace. Crash
-	  reporting is a separate opt-in, so it is referenced explicitly - which is exactly what a real
-	  app does.
+	  The product modules are referenced directly, which is what a new app should do. dd-sdk-ios 3.0
+	  removed the DatadogObjc framework that DatadogNet.Objc.iOS used to bind; that id still exists
+	  as a compatibility meta-package for apps upgrading from 2.x, but there is no reason to take it
+	  in new code.
 	-->
 	<PropertyGroup>
 		<DatadogPackageVersion Condition=" '$(DatadogPackageVersion)' == '' ">$(VersionPrefix)</DatadogPackageVersion>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="DatadogNet.Objc.iOS" Version="$(DatadogPackageVersion)" />
+		<PackageReference Include="DatadogNet.Core.iOS" Version="$(DatadogPackageVersion)" />
+		<PackageReference Include="DatadogNet.RUM.iOS" Version="$(DatadogPackageVersion)" />
+		<PackageReference Include="DatadogNet.Logs.iOS" Version="$(DatadogPackageVersion)" />
+		<PackageReference Include="DatadogNet.Trace.iOS" Version="$(DatadogPackageVersion)" />
+		<PackageReference Include="DatadogNet.SessionReplay.iOS" Version="$(DatadogPackageVersion)" />
 		<PackageReference Include="DatadogNet.CrashReporting.iOS" Version="$(DatadogPackageVersion)" />
 	</ItemGroup>
 

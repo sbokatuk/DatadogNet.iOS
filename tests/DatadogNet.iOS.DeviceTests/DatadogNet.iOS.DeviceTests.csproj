@@ -33,10 +33,12 @@
     dependencies, which is the part a ProjectReference would prove nothing about. See NuGet.config
     for the local feed.
 
-    These three references reach all eleven packages: Objc pulls Core, Internal, Logs, RUM,
-    SessionReplay and Trace (and OpenTelemetryApi through Trace), CrashReporting pulls
-    CrashReporter, and WebViewTracking is the last standalone one. If that stops being true, the
-    "every framework is linked" check below fails rather than silently testing less.
+    These five references reach all eleven native frameworks. DatadogNet.Objc.iOS is the
+    compatibility meta-package, referenced here rather than the modules it covers so that the
+    meta-package itself is exercised: it pulls Core, RUM, Logs, Trace and SessionReplay (and
+    Internal and OpenTelemetryApi through them). CrashReporting, WebViewTracking, Flags and
+    Profiling are separate opt-ins. If that stops being true, the "every framework is linked" check
+    fails rather than silently testing less.
   -->
   <PropertyGroup>
     <DatadogPackageVersion Condition=" '$(DatadogPackageVersion)' == '' ">$(VersionPrefix)</DatadogPackageVersion>
@@ -46,6 +48,8 @@
     <PackageReference Include="DatadogNet.Objc.iOS" Version="$(DatadogPackageVersion)" />
     <PackageReference Include="DatadogNet.CrashReporting.iOS" Version="$(DatadogPackageVersion)" />
     <PackageReference Include="DatadogNet.WebViewTracking.iOS" Version="$(DatadogPackageVersion)" />
+    <PackageReference Include="DatadogNet.Flags.iOS" Version="$(DatadogPackageVersion)" />
+    <PackageReference Include="DatadogNet.Profiling.iOS" Version="$(DatadogPackageVersion)" />
   </ItemGroup>
 
 </Project>

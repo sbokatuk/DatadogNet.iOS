@@ -6,9 +6,12 @@ workload supports only the current target framework and the previous one. The pa
 therefore built in two passes (see BuildNugets.sh) and merged here into one package per id.
 
 For every package in PRIMARY, any lib/<tfm>/ tree that exists in the matching ADDITIONAL package
-but not in PRIMARY is copied across, and the matching <group targetFramework="..."> is lifted out
-of ADDITIONAL's nuspec so NuGet advertises the new target framework. Everything else comes from
-PRIMARY unchanged.
+but not in PRIMARY is copied across, and any <group targetFramework="..."> ADDITIONAL declares and
+PRIMARY does not is lifted across too. Everything else comes from PRIMARY unchanged.
+
+The two are tracked independently on purpose: DatadogNet.Objc.iOS is a dependency-only
+meta-package with no lib/ folders, so deciding what to merge from lib/ alone left it declaring no
+dependencies at all for net10.
 
 The dependency group is copied rather than synthesised as an empty one. Ten of the eleven packages
 here declare dependencies on their siblings, and an empty group would tell NuGet that a net10.0-ios
@@ -76,37 +79,50 @@ def add_dependency_groups(nuspec: str, groups: list[str]) -> str:
 
 def merge(primary_path: Path, additional_path: Path, output_path: Path) -> list[str]:
     with zipfile.ZipFile(primary_path) as primary, zipfile.ZipFile(additional_path) as additional:
-        missing = sorted(target_frameworks(additional) - target_frameworks(primary))
-        if not missing:
+        missing_libs = sorted(target_frameworks(additional) - target_frameworks(primary))
+
+        # Symbol packages carry no nuspec dependencies worth merging, but they do carry lib/ trees,
+        # so they go through the same path with whatever groups they happen to have.
+        additional_nuspec = next(
+            (n for n in additional.namelist() if n.endswith(".nuspec")), None
+        )
+        primary_nuspec = next((n for n in primary.namelist() if n.endswith(".nuspec")), None)
+        available = (
+            dependency_groups(additional.read(additional_nuspec).decode("utf-8-sig"))
+            if additional_nuspec
+            else {}
+        )
+        already = (
+            dependency_groups(primary.read(primary_nuspec).decode("utf-8-sig"))
+            if primary_nuspec
+            else {}
+        )
+
+        # Dependency groups are merged on their own account, not as a side effect of carrying a
+        # lib/ tree. A dependency-only meta-package has no lib/ folders at all, so keying the merge
+        # off those alone left it advertising net8 and net9 and silently offering a net10 consumer
+        # no dependencies whatsoever.
+        missing_groups = sorted(set(available) - set(already))
+
+        if not missing_libs and not missing_groups:
             shutil.copy2(primary_path, output_path)
             return []
 
         carried = [
             name
             for name in additional.namelist()
-            if any(name.startswith(f"lib/{tfm}/") for tfm in missing)
+            if any(name.startswith(f"lib/{tfm}/") for tfm in missing_libs)
         ]
 
-        # Symbol packages carry no nuspec dependencies worth merging, but they do carry lib/
-        # trees, so they go through the same path with whatever groups they happen to have.
-        additional_nuspec = next(
-            (n for n in additional.namelist() if n.endswith(".nuspec")), None
-        )
-        available = (
-            dependency_groups(additional.read(additional_nuspec).decode("utf-8-sig"))
-            if additional_nuspec
-            else {}
-        )
-
-        groups = []
-        for tfm in missing:
-            group = available.get(tfm)
-            if group is None:
+        for tfm in missing_libs:
+            if tfm not in available:
                 raise SystemExit(
                     f"error: {additional_path.name} ships lib/{tfm}/ but its nuspec declares no "
                     f"dependency group for {tfm}; refusing to guess what a {tfm} consumer needs"
                 )
-            groups.append(group)
+
+        groups = [available[tfm] for tfm in missing_groups]
+        missing = sorted(set(missing_libs) | set(missing_groups))
 
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as merged:
             for item in primary.infolist():

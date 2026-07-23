@@ -2,7 +2,7 @@
 
 set -e
 
-# Builds and packs all eleven Datadog binding packages. Run ./FetchXcFrameworks.sh first.
+# Builds and packs all twelve Datadog binding packages. Run ./FetchXcFrameworks.sh first.
 #
 # Usage:
 #   ./BuildNugets.sh                 # version from Directory.Build.props
@@ -32,8 +32,9 @@ PASS2_SDK="10.0.100"
 
 # Packed in dependency order. Nothing requires it - ProjectReference means MSBuild builds each
 # package's dependencies on demand - but it keeps the log readable and means a failure in a base
-# package is reported before the ten packages built on top of it repeat the same error.
-PACKAGES="Internal Core CrashReporter OpenTelemetryApi Trace Logs RUM SessionReplay WebViewTracking CrashReporting Objc"
+# package is reported before the packages built on top of it repeat the same error. Objc is last:
+# it is a dependency-only meta-package covering the modules DatadogObjc used to hold.
+PACKAGES="Internal OpenTelemetryApi Core Trace Logs RUM SessionReplay WebViewTracking CrashReporting Flags Profiling Objc"
 
 VERSION_ARG=""
 if [ -n "$VERSION" ]; then

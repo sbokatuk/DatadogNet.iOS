@@ -91,7 +91,7 @@ jobs:
           {
             echo "### Published \`${{ needs.version.outputs.version }}\` to nuget.org"
             echo
-            for package in Objc Core Internal Logs RUM SessionReplay Trace WebViewTracking CrashReporting CrashReporter OpenTelemetryApi; do
+            for package in Core RUM Logs Trace SessionReplay WebViewTracking CrashReporting Flags Profiling Internal OpenTelemetryApi Objc; do
               id="DatadogNet.${package}.iOS"
               echo "- [${id}](https://www.nuget.org/packages/${id}/${{ needs.version.outputs.version }})"
             done

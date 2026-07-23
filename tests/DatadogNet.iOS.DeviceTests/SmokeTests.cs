@@ -1,12 +1,13 @@
+#nullable enable
 using System.Collections.ObjectModel;
-using CrashReporter;
+using System.Runtime.InteropServices;
+using DatadogCore;
 using DatadogCrashReporting;
 using DatadogInternal;
-using DatadogObjc;
-// Session Replay lives only in DatadogSessionReplay from dd-sdk-ios 2.19.0 onwards; DatadogObjc
-// used to declare a parallel set of DD* Session Replay types and no longer does, so there is
-// nothing left to disambiguate.
+using DatadogLogs;
+using DatadogRUM;
 using DatadogSessionReplay;
+using DatadogTrace;
 using DatadogWebViewTracking;
 using Foundation;
 using ObjCRuntime;
@@ -24,9 +25,9 @@ public sealed record SmokeTest(string Name, Action Execute);
 /// Datadog frameworks out of the packaged xcframeworks and drive the real SDK.
 /// </summary>
 /// <remarks>
-/// Nothing here reaches Datadog. The client token is fake and every feature is pointed at a
-/// custom endpoint on localhost, so the SDK batches events to disk and its uploads fail locally
-/// rather than sending junk to a real intake from CI.
+/// Nothing here reaches Datadog. The client token is fake and every feature is pointed at a custom
+/// endpoint on localhost, so the SDK batches events to disk and its uploads fail locally rather
+/// than sending junk to a real intake from CI.
 /// <para>
 /// The checks are ordered: the SDK has to be initialised before a feature can be enabled, and a
 /// feature has to be enabled before it can be driven. A failure early on therefore cascades, which
@@ -48,6 +49,11 @@ public static class SmokeTests
 
     private static void Report(string message) => Reporter(message);
 
+    /// <summary>Counts mapper invocations, incremented from the blocks registered in <see cref="EnablesRum"/>.</summary>
+    private static int viewEventsMapped;
+    private static int actionEventsMapped;
+    private static int logEventsMapped;
+
     public static SmokeTest[] All =>
     [
         new("every native framework is linked and loadable", EveryFrameworkIsLinked),
@@ -55,32 +61,343 @@ public static class SmokeTests
         new("sets verbosity, consent, user and account info", SetsSdkLevelState),
         new("enables RUM", EnablesRum),
         new("drives a RUM view, action and error", DrivesRum),
+        new("propagates view-level attributes to child events", ViewAttributesPropagate),
         new("enables Logs and writes every level", EnablesLogsAndWritesEveryLevel),
         new("enables Trace", EnablesTrace),
         new("enables Session Replay", EnablesSessionReplay),
         new("applies per-view Session Replay privacy overrides", SessionReplayPrivacyOverridesApply),
-        new("sets and clears account and user info", SetsAccountInfo),
-        new("exposes the new RUM attribute APIs and the AP2 site", NewRumAndSiteApis),
         new("enables crash reporting", EnablesCrashReporting),
-        new("constructs a URLSession delegate for first-party tracing", ConstructsUrlSessionDelegate),
         new("exposes WebView tracking", ExposesWebViewTracking),
-        new("exposes PLCrashReporter", ExposesCrashReporter),
-        new("drives RUM and Logs through the ergonomic overloads", ErgonomicOverloadsWork),
-        new("invokes a RUM event mapper", EventMapperIsInvoked),
-        new("invokes a Logs event mapper and redacts a message", LogEventMapperRedacts),
         new("instruments a URLSession delegate by type", InstrumentsUrlSessionByType),
+        new("drives RUM and Logs through the ergonomic overloads", ErgonomicOverloadsWork),
+        new("invokes a RUM event mapper", RumEventMapperIsInvoked),
+        new("invokes a Logs event mapper and redacts a message", LogsEventMapperRedacts),
         new("stops the RUM session and the SDK instance", StopsCleanly),
     ];
 
+    /// <summary>Every framework the packages ship. All eleven are dynamic in 3.x.</summary>
+    /// <remarks>
+    /// CrashReporter is absent from this list because it no longer exists: dd-sdk-ios 3.0 replaced
+    /// PLCrashReporter with KSCrash, which is linked into DatadogCrashReporting rather than shipped
+    /// as a framework of its own. That also removes the one static-archive special case the 2.x
+    /// bindings had to carry.
+    /// </remarks>
+    private static readonly string[] Frameworks =
+    [
+        "DatadogCore", "DatadogCrashReporting", "DatadogFlags", "DatadogInternal", "DatadogLogs",
+        "DatadogProfiling", "DatadogRUM", "DatadogSessionReplay", "DatadogTrace",
+        "DatadogWebViewTracking", "OpenTelemetryApi",
+    ];
+
+    [DllImport("/usr/lib/libSystem.dylib")]
+    private static extern uint _dyld_image_count();
+
+    [DllImport("/usr/lib/libSystem.dylib")]
+    private static extern IntPtr _dyld_get_image_name(uint index);
+
     /// <summary>
-    /// Exercises the hand-written convenience layer, which the generated binding knows nothing
-    /// about and which no other check would touch.
+    /// Proves each of the eleven xcframeworks actually made it into the app and was loaded.
     /// </summary>
+    /// <remarks>
+    /// This is the check that catches a packaging regression the compiler cannot see. A binding
+    /// assembly reaches its native framework only through selector strings, so a package whose
+    /// .resources.zip was empty, or whose xcframework manifest advertised a slice that had been
+    /// stripped, still compiles and links - and then fails at runtime the first time a type is
+    /// touched. DatadogFlags, DatadogProfiling and OpenTelemetryApi bind no managed types at all,
+    /// so for those there is no C# type whose use would reveal the problem.
+    /// </remarks>
+    private static void EveryFrameworkIsLinked()
+    {
+        var images = new List<string>();
+        var count = _dyld_image_count();
+        for (uint i = 0; i < count; i++)
+        {
+            var name = Marshal.PtrToStringUTF8(_dyld_get_image_name(i));
+            if (name is not null)
+            {
+                images.Add(name);
+            }
+        }
+
+        var missing = Frameworks
+            .Where(framework => !images.Any(image =>
+                image.EndsWith($"/{framework}.framework/{framework}", StringComparison.Ordinal)))
+            .ToList();
+
+        Assert(
+            missing.Count == 0,
+            $"these frameworks were not loaded into the process: {string.Join(", ", missing)}");
+
+        // KSCrash is statically linked into DatadogCrashReporting rather than shipped separately,
+        // so it never appears as an image. Resolving one of its classes is what proves it arrived.
+        Assert(
+            Class.GetHandle("KSCrash") != IntPtr.Zero,
+            "KSCrash did not link: the KSCrash class does not exist.");
+
+        Report($"all {Frameworks.Length} frameworks loaded, KSCrash statically linked");
+    }
+
+    private static void InitializesTheSdk()
+    {
+        var configuration = new DDConfiguration(clientToken: ClientToken, env: "e2e")
+        {
+            Service = "datadognet-ios-devicetests",
+            Site = DDSite.Us1(),
+        };
+
+        DDDatadog.InitializeWithConfiguration(configuration, DDTrackingConsent.Granted());
+
+        Assert(DDDatadog.IsInitialized(), "DDDatadog.IsInitialized was false after initialization.");
+        Report($"initialized service={configuration.Service} env={configuration.Env}");
+    }
+
+    private static void SetsSdkLevelState()
+    {
+        DDDatadog.SetVerbosityLevel(DDCoreLoggerLevel.Debug);
+
+        DDDatadog.SetTrackingConsent(TrackingConsent.Pending);
+        DDDatadog.SetTrackingConsent(TrackingConsent.Granted);
+
+        DDDatadog.SetUserInfo("e2e-user", "E2E User", "e2e@example.invalid");
+        DDDatadog.AddUserExtraInfo(new Dictionary<string, object?> { ["origin"] = "device-tests" });
+
+        // Account info arrived in 2.29.0 and propagates to Logs, RUM and Trace.
+        DDDatadog.SetAccountInfo("acct-1", "Test Account");
+        DDDatadog.ClearAccountInfo();
+        DDDatadog.ClearUserInfo();
+
+        Report("verbosity, consent, user and account info all accepted");
+    }
+
+    private static void EnablesRum()
+    {
+        var configuration = new DDRUMConfiguration(applicationID: RumApplicationId)
+        {
+            SessionSampleRate = 100,
+            TrackFrustrations = true,
+            TrackBackgroundEvents = true,
+            // New in 3.0: reports memory warnings as RUM errors.
+            TrackMemoryWarnings = true,
+            CustomEndpoint = LocalEndpoint,
+            UiKitViewsPredicate = new DDDefaultUIKitRUMViewsPredicate(),
+            UiKitActionsPredicate = new DDDefaultUIKitRUMActionsPredicate(),
+        };
+
+        // Registered before EnableWith, which is the only point at which mappers can be set.
+        configuration.SetViewEventMapper(view =>
+        {
+            Interlocked.Increment(ref viewEventsMapped);
+            return view;
+        });
+
+        configuration.SetActionEventMapper(action =>
+        {
+            Interlocked.Increment(ref actionEventsMapped);
+            return action;
+        });
+
+        DDRUM.EnableWith(configuration);
+
+        Assert(DDRUMMonitor.Shared() is not null, "DDRUMMonitor.Shared was null after enabling RUM.");
+        Report($"RUM enabled for application {configuration.ApplicationID}");
+    }
+
+    private static void DrivesRum()
+    {
+        var monitor = DDRUMMonitor.Shared();
+        var attributes = DatadogAttributes.Empty;
+
+        monitor.StartViewWithKey("e2e-view", "E2E View", attributes);
+        monitor.AddActionWithType(DDRUMActionType.Tap, "e2e-action", attributes);
+        monitor.AddErrorWithMessage("e2e-error", null, DDRUMErrorSource.Source, attributes);
+
+        monitor.StartResourceWithResourceKey("e2e-resource", DDRUMMethod.Get, "https://example.invalid/thing", attributes);
+        monitor.StopResourceWithResourceKey("e2e-resource", new NSNumber(200), DDRUMResourceType.Fetch, new NSNumber(0), attributes);
+
+        monitor.StopViewWithKey("e2e-view", attributes);
+
+        Report("started and stopped a view with an action, error and resource");
+    }
+
+    /// <summary>
+    /// The view-attribute APIs added in 3.0, which are the headline RUM change of the release.
+    /// </summary>
+    private static void ViewAttributesPropagate()
+    {
+        var monitor = DDRUMMonitor.Shared();
+
+        using (monitor.StartView("attributed-view"))
+        {
+            monitor.AddViewAttributeForKey("checkout.step", new NSString("payment"));
+            monitor.AddViewAttributes(new Dictionary<string, object?>
+            {
+                ["cart.size"] = 3,
+                ["cart.currency"] = "GBP",
+            });
+
+            // Recorded while the attributes are set, so upstream attaches them to this action too -
+            // that propagation is the whole point of the new API.
+            monitor.AddAction(DDRUMActionType.Tap, "pay");
+
+            monitor.RemoveViewAttributeForKey("checkout.step");
+            monitor.RemoveViewAttributes("cart.size", "cart.currency");
+        }
+
+        Report("view attributes added, inherited by a child action, and removed");
+    }
+
+    private static void EnablesLogsAndWritesEveryLevel()
+    {
+        var logsConfiguration = new DDLogsConfiguration(LocalEndpoint);
+        logsConfiguration.SetEventMapper(logEvent =>
+        {
+            Interlocked.Increment(ref logEventsMapped);
+            if (logEvent.Message == "e2e redact me")
+            {
+                logEvent.Message = "[redacted]";
+            }
+
+            return logEvent;
+        });
+
+        DDLogs.EnableWith(logsConfiguration);
+
+        var logger = DDLogger.Create(name: "e2e", printLogsToConsole: false);
+        Assert(logger is not null, "DDLogger.Create returned null.");
+
+        logger.Debug("e2e debug");
+        logger.Info("e2e info");
+        logger.Notice("e2e notice");
+        logger.Warn("e2e warn");
+        logger.Error("e2e error");
+        logger.Critical("e2e critical");
+
+        logger.AddTagWithKey("suite", "device-tests");
+        logger.AddAttributeForKey("attempt", new NSNumber(1));
+        logger.RemoveTagWithKey("suite");
+        logger.RemoveAttributeForKey("attempt");
+
+        Report("wrote six levels and round-tripped a tag and an attribute");
+    }
+
+    private static void EnablesTrace()
+    {
+        DDTrace.EnableWith(new DDTraceConfiguration
+        {
+            SampleRate = 100,
+            NetworkInfoEnabled = true,
+            BundleWithRumEnabled = true,
+            CustomEndpoint = LocalEndpoint,
+        });
+
+        // The header writers are what an app touches directly. All three lost their sampling
+        // argument in 3.0 - sampling is now derived from the RUM session id so that a trace and its
+        // session agree - and DDOTelHTTPHeadersWriter was replaced by DDW3CHTTPHeadersWriter.
+        var datadogWriter = new DDHTTPHeadersWriter(DDTraceContextInjection.All);
+        var b3Writer = new DDB3HTTPHeadersWriter(DDInjectEncoding.Multiple, DDTraceContextInjection.All);
+        var w3cWriter = new DDW3CHTTPHeadersWriter(DDTraceContextInjection.All);
+
+        Assert(datadogWriter.TraceHeaderFields is not null, "Datadog header writer produced no fields.");
+        Assert(b3Writer.TraceHeaderFields is not null, "B3 header writer produced no fields.");
+        Assert(w3cWriter.TraceHeaderFields is not null, "W3C header writer produced no fields.");
+
+        Report("Trace enabled; Datadog, B3 and W3C header writers all constructed");
+    }
+
+    private static void EnablesSessionReplay()
+    {
+        var configuration = new DDSessionReplayConfiguration(
+            replaySampleRate: 100,
+            textAndInputPrivacyLevel: DDTextAndInputPrivacyLevel.MaskAll,
+            imagePrivacyLevel: DDImagePrivacyLevel.MaskAll,
+            touchPrivacyLevel: DDTouchPrivacyLevel.Hide)
+        {
+            CustomEndpoint = LocalEndpoint,
+            StartRecordingImmediately = false,
+        };
+
+        DDSessionReplay.EnableWith(configuration);
+
+        Assert(
+            configuration.TextAndInputPrivacyLevel == DDTextAndInputPrivacyLevel.MaskAll,
+            "textAndInputPrivacyLevel did not round-trip.");
+
+        DDSessionReplay.StartRecording();
+        DDSessionReplay.StopRecording();
+
+        Report("Session Replay enabled with fine-grained privacy, then started and stopped");
+    }
+
+    private static void SessionReplayPrivacyOverridesApply()
+    {
+        var view = new UIView();
+        var overrides = view.GetDdSessionReplayPrivacyOverrides();
+
+        Assert(overrides is not null, "UIView returned no privacy overrides object.");
+
+        overrides.TextAndInputPrivacy = DDTextAndInputPrivacyLevelOverride.MaskAll;
+        overrides.ImagePrivacy = DDImagePrivacyLevelOverride.MaskAll;
+        overrides.TouchPrivacy = DDTouchPrivacyLevelOverride.Hide;
+        overrides.Hide = new NSNumber(true);
+
+        var again = view.GetDdSessionReplayPrivacyOverrides();
+        Assert(
+            again.TextAndInputPrivacy == DDTextAndInputPrivacyLevelOverride.MaskAll,
+            $"Override did not stick: {again.TextAndInputPrivacy}");
+        Assert(again.Hide?.BoolValue == true, "Hide override did not stick.");
+
+        Report("per-view privacy overrides set and read back");
+    }
+
+    private static void EnablesCrashReporting()
+    {
+        // Installs the KSCrash signal handlers. The app is not crashed afterwards - that would take
+        // the test host with it - so this proves the framework links and the handler installs, not
+        // that a report round-trips to Datadog.
+        DDCrashReporter.Enable();
+
+        Report("crash reporting enabled (KSCrash)");
+    }
+
+    private static void ExposesWebViewTracking()
+    {
+        // A WKWebView is not created here: instantiating one spins up the whole web content
+        // process, which is slow and flaky in CI for no added coverage.
+        Assert(
+            Class.GetHandle(typeof(DDWebViewTracking)) != IntPtr.Zero,
+            "DDWebViewTracking did not resolve to a native class.");
+
+        Report("DDWebViewTracking is available");
+    }
+
+    /// <summary>
+    /// The unified URLSession instrumentation that replaced the delegate types in 3.0.
+    /// </summary>
+    private static void InstrumentsUrlSessionByType()
+    {
+        DDURLSessionInstrumentation.Enable<E2EUrlSessionDelegate>();
+        DDURLSessionInstrumentation.Disable<E2EUrlSessionDelegate>();
+
+        // A type the Objective-C runtime has never heard of must be rejected rather than silently
+        // instrumenting nothing, which is what passing IntPtr.Zero to the native API does.
+        var rejected = false;
+        try
+        {
+            DDURLSessionInstrumentation.Enable(typeof(string));
+        }
+        catch (ArgumentException)
+        {
+            rejected = true;
+        }
+
+        Assert(rejected, "An unregistered delegate type was accepted instead of throwing.");
+        Report("instrumented and disabled a URLSession delegate by type");
+    }
+
     private static void ErgonomicOverloadsWork()
     {
-        var monitor = DDRUMMonitor.Shared;
+        var monitor = DDRUMMonitor.Shared();
 
-        // The scope form: the view is stopped when the using block is left, whatever happens in it.
         using (var view = monitor.StartView("ergonomic-view", "Ergonomic View"))
         {
             Assert(view.Key == "ergonomic-view", $"Scope reported the wrong key: {view.Key}");
@@ -105,8 +422,6 @@ public static class SmokeTests
         monitor.StopView("ergonomic-view-2");
         second.Dispose();
 
-        // An attribute type with no Objective-C representation must be rejected loudly rather than
-        // silently dropped, since a missing attribute is invisible until someone queries for it.
         var rejected = false;
         try
         {
@@ -119,508 +434,110 @@ public static class SmokeTests
 
         Assert(rejected, "An unconvertible attribute value was accepted instead of throwing.");
 
-        // The logger convenience form, including the exception overload that folds error.kind,
-        // error.message and error.stack into the payload.
         var logger = DDLogger.Create(name: "ergonomics", printLogsToConsole: false);
         logger.Log(DDLogLevel.Info, "ergonomic info");
         logger.Log(DDLogLevel.Error, "ergonomic error", new InvalidOperationException("boom"));
 
-        // A read-only dictionary that is deliberately not an IDictionary, which is what the naive
-        // copy in the exception path used to throw on.
         IReadOnlyDictionary<string, object?> readOnly =
             new ReadOnlyDictionary<string, object?>(new Dictionary<string, object?> { ["k"] = "v" });
         logger.Log(DDLogLevel.Warn, "ergonomic warn", new Exception("boom"), readOnly);
 
-        DDDatadog.SetUserInfo("ergonomic-user");
-        DDDatadog.SetTrackingConsent(TrackingConsent.Granted);
-
         Report("view scopes, attribute conversion, logger and consent helpers all behaved");
     }
 
-    /// <summary>Counts mapper invocations, incremented from the blocks registered when features are enabled.</summary>
-    private static int viewEventsMapped;
-    private static int actionEventsMapped;
-    private static int logEventsMapped;
-    private static int logEventsRedacted;
-
     /// <summary>
-    /// An NSUrlSession delegate for <see cref="InstrumentsUrlSessionByType"/> to instrument.
+    /// Checks that the RUM event mappers fire, and that an event survives the round trip back into
+    /// Swift.
     /// </summary>
     /// <remarks>
-    /// [Register] matters: DDURLSessionInstrumentation takes an Objective-C Class, so the type has
-    /// to be visible to the Objective-C runtime for the lookup to resolve to anything.
+    /// Mappers are how an app redacts or drops events before upload, and they are the only part of
+    /// the binding that passes a managed delegate into Swift and gets a Swift object back - so if
+    /// block marshalling is wrong anywhere it is wrong here, and the failure surfaces as a crash
+    /// inside the SDK's event-writing path rather than at the call that registered the mapper.
     /// </remarks>
-    [Register(nameof(InstrumentedSessionDelegate))]
-    private sealed class InstrumentedSessionDelegate : NSUrlSessionDataDelegate
+    private static void RumEventMapperIsInvoked()
     {
-    }
-
-    /// <summary>
-    /// Checks that the RUM event mappers actually fire, and that an event can be handed back to
-    /// Swift from managed code.
-    /// </summary>
-    /// <remarks>
-    /// Mappers are how an app redacts or drops events before they are uploaded, so they are the
-    /// mechanism behind every "scrub the PII out of this" requirement. They are also the only part
-    /// of the binding that passes a managed delegate into Swift and gets a Swift object back out,
-    /// so if block marshalling is wrong anywhere it is wrong here - and the failure mode is a crash
-    /// inside the SDK's event-writing path, long after the call that registered the mapper.
-    /// <para>
-    /// The mappers are registered on the real configuration in <see cref="EnablesRum"/>, before
-    /// RUM is enabled, because that is the only time they can be set. This check then runs after
-    /// <see cref="DrivesRum"/> has produced events and asserts the blocks were actually reached.
-    /// </para>
-    /// </remarks>
-    private static void EventMapperIsInvoked()
-    {
-        // Events are mapped on the SDK's own queue as they are written, not synchronously with the
-        // call that produced them, so give that queue a moment before concluding anything.
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline && (viewEventsMapped == 0 || actionEventsMapped == 0))
-        {
-            Thread.Sleep(100);
-        }
-
-        Assert(viewEventsMapped > 0, "The view event mapper was never invoked.");
-        Assert(actionEventsMapped > 0, "The action event mapper was never invoked.");
-
-        Report($"mappers invoked: {viewEventsMapped} view, {actionEventsMapped} action");
-    }
-
-    /// <summary>
-    /// Checks that a Logs event mapper fires and that a rewritten message survives back into Swift.
-    /// </summary>
-    private static void LogEventMapperRedacts()
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline && logEventsRedacted == 0)
-        {
-            Thread.Sleep(100);
-        }
-
-        Assert(logEventsMapped > 0, "The log event mapper was never invoked.");
-        Assert(logEventsRedacted > 0, "The log event mapper never saw the message it was meant to redact.");
-
-        Report($"log events mapped: {logEventsMapped}, redacted: {logEventsRedacted}");
-    }
-
-    /// <summary>
-    /// Checks the type-based URLSession instrumentation helpers.
-    /// </summary>
-    /// <remarks>
-    /// This is the API Datadog documents for automatic resource tracking, and the raw binding takes
-    /// the delegate class as a bare IntPtr - a signature that accepts IntPtr.Zero happily and then
-    /// instruments nothing. The helpers resolve the Objective-C class from a managed Type and throw
-    /// if it does not exist, which is what this checks in both directions.
-    /// </remarks>
-    private static void InstrumentsUrlSessionByType()
-    {
-        DDURLSessionInstrumentation.Enable<InstrumentedSessionDelegate>();
-
-        var configuration = DDURLSessionInstrumentationConfiguration.Create<InstrumentedSessionDelegate>();
-        Assert(configuration.DelegateClass != IntPtr.Zero, "The configuration resolved a null delegate class.");
-        Assert(
-            configuration.DelegateType == typeof(InstrumentedSessionDelegate),
-            $"DelegateType round-tripped to {configuration.DelegateType?.Name ?? "null"}.");
-
-        // A type the Objective-C runtime has never heard of must be rejected rather than silently
-        // instrumenting nothing.
-        var rejected = false;
-        try
-        {
-            DDURLSessionInstrumentation.Enable(typeof(SmokeTests));
-        }
-        catch (ArgumentException)
-        {
-            rejected = true;
-        }
-
-        Assert(rejected, "A non-Objective-C type was accepted as a session delegate.");
-
-        DDURLSessionInstrumentation.Disable<InstrumentedSessionDelegate>();
-        Report("instrumented and disabled a URLSession delegate by type");
-    }
-
-    /// <summary>Every framework shipped as a dynamic framework, which is all but CrashReporter.</summary>
-    private static readonly string[] DynamicFrameworks =
-    [
-        "DatadogCore", "DatadogCrashReporting", "DatadogInternal", "DatadogLogs", "DatadogObjc",
-        "DatadogRUM", "DatadogSessionReplay", "DatadogTrace", "DatadogWebViewTracking",
-        "OpenTelemetryApi",
-    ];
-
-    [System.Runtime.InteropServices.DllImport("/usr/lib/libSystem.dylib")]
-    private static extern uint _dyld_image_count();
-
-    [System.Runtime.InteropServices.DllImport("/usr/lib/libSystem.dylib")]
-    private static extern IntPtr _dyld_get_image_name(uint index);
-
-    /// <summary>
-    /// Proves each of the eleven xcframeworks actually made it into the app and was loaded.
-    /// </summary>
-    /// <remarks>
-    /// This is the check that catches a packaging regression the compiler cannot see. A binding
-    /// assembly reaches its native framework only through selector strings, so a package whose
-    /// .resources.zip was empty, or whose xcframework manifest advertised a slice that had been
-    /// stripped, still compiles and links - and then fails at runtime the first time a type is
-    /// touched. Four of the eleven packages (Logs, RUM, Trace, OpenTelemetryApi) bind no managed
-    /// types at all, so for those there is no C# type whose use would reveal the problem.
-    /// <para>
-    /// Asking dyld what is loaded covers all of them uniformly, and does not depend on guessing
-    /// Swift's mangled Objective-C class names - which encode the module name and its length, and
-    /// are easy to get subtly wrong.
-    /// </para>
-    /// </remarks>
-    private static void EveryFrameworkIsLinked()
-    {
-        var images = new List<string>();
-        var count = _dyld_image_count();
-        for (uint i = 0; i < count; i++)
-        {
-            var name = System.Runtime.InteropServices.Marshal.PtrToStringUTF8(_dyld_get_image_name(i));
-            if (name is not null)
+        // Mappers run on the SDK's own write queue, so this waits rather than asserting straight
+        // away - and keeps producing events while it waits, instead of hoping the ones already
+        // queued drain in time. A fixed short deadline over a single batch is what made this flaky:
+        // it passed locally in milliseconds and timed out at five seconds on a loaded CI runner
+        // whose simulator had taken 46 seconds just to boot.
+        var elapsed = WaitForAsyncWork(
+            () => viewEventsMapped > 0 && actionEventsMapped > 0,
+            nudge: attempt =>
             {
-                images.Add(name);
+                var monitor = DDRUMMonitor.Shared();
+                monitor.StartViewWithKey($"mapper-nudge-{attempt}", "Mapper Nudge", DatadogAttributes.Empty);
+                monitor.AddActionWithType(DDRUMActionType.Tap, $"mapper-nudge-{attempt}", DatadogAttributes.Empty);
+                monitor.StopViewWithKey($"mapper-nudge-{attempt}", DatadogAttributes.Empty);
+            });
+
+        Assert(viewEventsMapped > 0, $"The view event mapper was never invoked (waited {elapsed:0.0}s).");
+        Assert(actionEventsMapped > 0, $"The action event mapper was never invoked (waited {elapsed:0.0}s).");
+
+        Report($"mappers invoked after {elapsed:0.0}s: {viewEventsMapped} view, {actionEventsMapped} action");
+    }
+
+    private static void LogsEventMapperRedacts()
+    {
+        var elapsed = WaitForAsyncWork(
+            () => logEventsMapped > 0,
+            nudge: attempt => DDLogger
+                .Create(name: "redaction", printLogsToConsole: false)
+                .Log(DDLogLevel.Info, attempt == 0 ? "e2e redact me" : $"e2e mapper nudge {attempt}"));
+
+        Assert(logEventsMapped > 0, $"The Logs event mapper was never invoked (waited {elapsed:0.0}s).");
+        Report($"log events mapped after {elapsed:0.0}s: {logEventsMapped}");
+    }
+
+    /// <summary>
+    /// Waits for an asynchronous SDK side effect, re-driving it periodically, and returns how long
+    /// it took.
+    /// </summary>
+    /// <param name="satisfied">Checked between attempts; the wait ends as soon as it is true.</param>
+    /// <param name="nudge">
+    /// Produces more of the work being waited on. Called once per second with an increasing
+    /// attempt number.
+    /// </param>
+    /// <remarks>
+    /// The generous ceiling is deliberate. Nothing here is expected to take anywhere near it - the
+    /// wait ends the moment the condition holds, so a healthy run costs milliseconds - but a CI
+    /// runner under contention is far slower than a developer's machine, and a mapper that never
+    /// fires is a real defect worth failing on rather than a timeout worth shrugging at.
+    /// </remarks>
+    private static double WaitForAsyncWork(Func<bool> satisfied, Action<int> nudge)
+    {
+        var started = DateTime.UtcNow;
+        var deadline = started.AddSeconds(30);
+        var attempt = 0;
+
+        while (!satisfied())
+        {
+            if (DateTime.UtcNow >= deadline)
+            {
+                break;
+            }
+
+            nudge(attempt++);
+
+            // Re-checked at a finer interval than it is nudged, so a healthy run returns promptly
+            // rather than always paying a full second.
+            for (var i = 0; i < 10 && !satisfied(); i++)
+            {
+                Thread.Sleep(100);
             }
         }
 
-        var missing = DynamicFrameworks
-            .Where(framework => !images.Any(image =>
-                image.EndsWith($"/{framework}.framework/{framework}", StringComparison.Ordinal)))
-            .ToList();
-
-        Assert(
-            missing.Count == 0,
-            $"these frameworks were not loaded into the process: {string.Join(", ", missing)}");
-
-        // CrashReporter is the one framework that ships as a static archive rather than a dynamic
-        // framework, so it never appears as a loaded image - its code is linked straight into the
-        // app binary. Resolving one of its Objective-C classes is what proves it arrived, and is
-        // also what proves ForceLoad did its job: without it the linker drops the archive's
-        // Objective-C metadata and this returns null.
-        Assert(
-            Class.GetHandle("PLCrashReporter") != IntPtr.Zero,
-            "CrashReporter did not link: the PLCrashReporter class does not exist.");
-
-        Report($"all {DynamicFrameworks.Length} dynamic frameworks loaded, CrashReporter statically linked");
-    }
-
-    private static void InitializesTheSdk()
-    {
-        var configuration = new DDConfiguration(clientToken: ClientToken, env: "e2e")
-        {
-            Service = "datadognet-ios-devicetests",
-            Site = DDSite.Us1,
-        };
-
-        DDDatadog.InitializeWithConfiguration(configuration, DDTrackingConsent.Granted);
-
-        Assert(DDDatadog.IsInitialized, "DDDatadog.IsInitialized was false after initialization.");
-        Report($"initialized service={configuration.Service} env={configuration.Env}");
-    }
-
-    private static void SetsSdkLevelState()
-    {
-        DDDatadog.VerbosityLevel = DDSDKVerbosityLevel.Debug;
-        Assert(
-            DDDatadog.VerbosityLevel == DDSDKVerbosityLevel.Debug,
-            $"VerbosityLevel did not round-trip: {DDDatadog.VerbosityLevel}");
-
-        DDDatadog.SetTrackingConsentWithConsent(DDTrackingConsent.Pending);
-        DDDatadog.SetTrackingConsentWithConsent(DDTrackingConsent.Granted);
-
-        DDDatadog.SetUserInfoWithId(
-            "e2e-user",
-            "E2E User",
-            "e2e@example.invalid",
-            new NSDictionary<NSString, NSObject>());
-
-        DDDatadog.AddUserExtraInfo(
-            new NSDictionary<NSString, NSObject>(new NSString("origin"), new NSString("device-tests")));
-
-        Report("verbosity, consent and user info all accepted");
-    }
-
-    private static void EnablesRum()
-    {
-        var configuration = new DDRUMConfiguration(applicationID: RumApplicationId)
-        {
-            SessionSampleRate = 100,
-            TrackFrustrations = true,
-            TrackBackgroundEvents = true,
-            CustomEndpoint = LocalEndpoint,
-            // The default UIKit predicates are what a real app wires up, and constructing them
-            // exercises two more bound types.
-            UiKitViewsPredicate = new DDDefaultUIKitRUMViewsPredicate(),
-            UiKitActionsPredicate = new DDDefaultUIKitRUMActionsPredicate(),
-        };
-
-        // Registered before EnableWith, which is the only point at which mappers can be set.
-        // Returning the event unchanged is the identity case; returning null would drop it.
-        configuration.SetViewEventMapper(view =>
-        {
-            Interlocked.Increment(ref viewEventsMapped);
-            return view;
-        });
-
-        configuration.SetActionEventMapper(action =>
-        {
-            Interlocked.Increment(ref actionEventsMapped);
-            return action;
-        });
-
-        DDRUM.EnableWith(configuration);
-
-        Assert(DDRUMMonitor.Shared is not null, "DDRUMMonitor.Shared was null after enabling RUM.");
-        Report($"RUM enabled for application {configuration.ApplicationID}");
-    }
-
-    private static void DrivesRum()
-    {
-        var monitor = DDRUMMonitor.Shared;
-        var attributes = new NSDictionary<NSString, NSObject>();
-
-        monitor.StartViewWithKey("e2e-view", "E2E View", attributes);
-        monitor.AddActionWithType(DDRUMActionType.Tap, "e2e-action", attributes);
-        monitor.AddErrorWithMessage("e2e-error", null, DDRUMErrorSource.Source, attributes);
-        monitor.AddTimingWithName("e2e-timing");
-
-        // A resource is started and stopped so the resource path is exercised too - that is the
-        // part of RUM most apps get through URLSession instrumentation rather than by hand.
-        monitor.StartResourceWithResourceKey("e2e-resource", DDRUMMethod.Get, "https://example.invalid/thing", attributes);
-        monitor.StopResourceWithResourceKey("e2e-resource", new NSNumber(200), DDRUMResourceType.Fetch, new NSNumber(0), attributes);
-
-        monitor.StopViewWithKey("e2e-view", attributes);
-
-        Report("started and stopped a view with an action, error, timing and resource");
-    }
-
-    private static void EnablesLogsAndWritesEveryLevel()
-    {
-        var logsConfiguration = new DDLogsConfiguration(LocalEndpoint);
-
-        // Registered before EnableWith, the only point at which a mapper can be set. Neither the
-        // DDLogEvent model nor setEventMapper: was bound before - Objective Sharpie omitted the
-        // whole family - so this is the first release in which a log can be redacted or dropped
-        // before upload.
-        logsConfiguration.SetEventMapper(logEvent =>
-        {
-            Interlocked.Increment(ref logEventsMapped);
-
-            if (logEvent.Message.Contains("secret", StringComparison.Ordinal))
-            {
-                logEvent.Message = "[redacted]";
-                Interlocked.Increment(ref logEventsRedacted);
-            }
-
-            return logEvent;
-        });
-
-        DDLogs.EnableWith(logsConfiguration);
-
-        // The designated initializer takes all eight settings; there is no parameterless form.
-        var logger = DDLogger.CreateWith(new DDLoggerConfiguration(
-            service: "datadognet-ios-devicetests",
-            name: "e2e",
-            networkInfoEnabled: true,
-            bundleWithRumEnabled: true,
-            bundleWithTraceEnabled: true,
-            remoteSampleRate: 100,
-            remoteLogThreshold: DDLogLevel.Debug,
-            printLogsToConsole: false));
-
-        Assert(logger is not null, "DDLogger.CreateWith returned null.");
-
-        logger.Debug("e2e debug");
-        logger.Info("e2e info");
-        logger.Notice("e2e notice");
-        logger.Warn("e2e warn");
-        logger.Error("e2e error");
-        logger.Critical("e2e critical");
-
-        logger.AddTagWithKey("suite", "device-tests");
-        logger.AddAttributeForKey("attempt", new NSNumber(1));
-        logger.RemoveTagWithKey("suite");
-        logger.RemoveAttributeForKey("attempt");
-
-        // Picked up by the mapper registered above and rewritten to "[redacted]".
-        logger.Info("this contains a secret value");
-
-        Report("wrote six levels and round-tripped a tag and an attribute");
-    }
-
-    private static void EnablesTrace()
-    {
-        DDTrace.EnableWith(new DDTraceConfiguration
-        {
-            SampleRate = 100,
-            NetworkInfoEnabled = true,
-            BundleWithRumEnabled = true,
-            CustomEndpoint = LocalEndpoint,
-        });
-
-        // The header writers are the part of tracing an app touches directly, and each is bound
-        // from a different Swift type - DDOTelHTTPHeadersWriter in particular is the one that only
-        // links if OpenTelemetryApi.xcframework made it into the package.
-        var sampling = DDTraceSamplingStrategy.CustomWithSampleRate(100);
-
-        var datadogWriter = new DDHTTPHeadersWriter(sampling, DDTraceContextInjection.All);
-        var b3Writer = new DDB3HTTPHeadersWriter(sampling, DDInjectEncoding.Multiple, DDTraceContextInjection.All);
-        var otelWriter = new DDOTelHTTPHeadersWriter(sampling, DDInjectEncoding.Multiple, DDTraceContextInjection.All);
-
-        Assert(datadogWriter.TraceHeaderFields is not null, "Datadog header writer produced no fields.");
-        Assert(b3Writer.TraceHeaderFields is not null, "B3 header writer produced no fields.");
-        Assert(otelWriter.TraceHeaderFields is not null, "OpenTelemetry header writer produced no fields.");
-
-        Report("Trace enabled; Datadog, B3 and OpenTelemetry header writers all constructed");
-    }
-
-    private static void EnablesSessionReplay()
-    {
-
-        // The three fine-grained levels replaced the single defaultPrivacyLevel in 2.19.0, and the
-        // initializer requires them, so the choice cannot be left implicit.
-        var configuration = new DDSessionReplayConfiguration(
-            replaySampleRate: 100,
-            textAndInputPrivacyLevel: DDTextAndInputPrivacyLevel.MaskAll,
-            imagePrivacyLevel: DDImagePrivacyLevel.MaskAll,
-            touchPrivacyLevel: DDTouchPrivacyLevel.Hide)
-        {
-            CustomEndpoint = LocalEndpoint,
-            // Recording is started explicitly below rather than on enable, which is what an app
-            // does when it wants replay only after consent or a particular screen.
-            StartRecordingImmediately = false,
-        };
-
-        DDSessionReplay.EnableWith(configuration);
-
-        Assert(
-            configuration.TextAndInputPrivacyLevel == DDTextAndInputPrivacyLevel.MaskAll,
-            "textAndInputPrivacyLevel did not round-trip.");
-        Assert(
-            configuration.TouchPrivacyLevel == DDTouchPrivacyLevel.Hide,
-            "touchPrivacyLevel did not round-trip.");
-
-        DDSessionReplay.StartRecording();
-        DDSessionReplay.StopRecording();
-
-        Report("Session Replay enabled with fine-grained privacy, then started and stopped");
-    }
-
-    /// <summary>
-    /// Per-view privacy overrides, added in 2.19.0 as a category on UIView.
-    /// </summary>
-    private static void SessionReplayPrivacyOverridesApply()
-    {
-        var view = new UIView();
-        var overrides = view.GetDdSessionReplayPrivacyOverrides();
-
-        Assert(overrides is not null, "UIView returned no privacy overrides object.");
-
-        overrides.TextAndInputPrivacy = DDTextAndInputPrivacyLevelOverride.MaskAll;
-        overrides.ImagePrivacy = DDImagePrivacyLevelOverride.MaskAll;
-        overrides.TouchPrivacy = DDTouchPrivacyLevelOverride.Hide;
-        overrides.Hide = new NSNumber(true);
-
-        // Read back through a fresh accessor call: the override object is attached to the view, so
-        // a value set through one handle must be visible through another.
-        var again = view.GetDdSessionReplayPrivacyOverrides();
-        Assert(
-            again.TextAndInputPrivacy == DDTextAndInputPrivacyLevelOverride.MaskAll,
-            $"Override did not stick: {again.TextAndInputPrivacy}");
-        Assert(again.Hide?.BoolValue == true, "Hide override did not stick.");
-
-        Report("per-view privacy overrides set and read back");
-    }
-
-    /// <summary>Account info and the user-info clearing APIs, added in 2.29.0 and 2.30.0.</summary>
-    private static void SetsAccountInfo()
-    {
-        DDDatadog.SetAccountInfoWithAccountId("acct-1", "Test Account", DatadogAttributes.Empty);
-        DDDatadog.AddAccountExtraInfo(
-            new NSDictionary<NSString, NSObject>(new NSString("tier"), new NSString("premium")));
-        DDDatadog.ClearAccountInfo();
-
-        // setUserInfo requires an id from 2.24.0, and clearUserInfo arrived in 2.30.0.
-        DDDatadog.SetUserInfoWithUserId("user-2", "User Two", "user2@example.invalid", DatadogAttributes.Empty);
-        DDDatadog.ClearUserInfo();
-
-        Report("account info set, extended and cleared; user info cleared");
-    }
-
-    /// <summary>Attribute APIs added to the RUM monitor in 2.23.0, and the AP2 site added in 2.29.0.</summary>
-    private static void NewRumAndSiteApis()
-    {
-        var monitor = DDRUMMonitor.Shared;
-
-        monitor.AddAttributes(
-            new NSDictionary<NSString, NSObject>(new NSString("build.channel"), new NSString("e2e")));
-        monitor.RemoveAttributesForKeys(["build.channel"]);
-
-        Assert(DDSite.Ap2 is not null, "DDSite.Ap2 is missing.");
-
-        Report("RUM addAttributes/removeAttributes and DDSite.Ap2 available");
-    }
-
-    private static void EnablesCrashReporting()
-    {
-        // Enabling installs a signal handler. The app is not crashed afterwards - a crash would
-        // take the test host with it - so this proves the framework links and the handler installs,
-        // not that a report round-trips to Datadog.
-        DDCrashReporter.Enable();
-
-        Report("crash reporting enabled");
-    }
-
-    private static void ConstructsUrlSessionDelegate()
-    {
-        var hosts = new NSSet<NSString>(new NSString("example.invalid"));
-        using var internalDelegate = new DatadogURLSessionDelegate(hosts);
-
-        Assert(internalDelegate.Handle != IntPtr.Zero, "DatadogURLSessionDelegate has a null handle.");
-
-        var headerTypes = new NSDictionary<NSString, NSSet<DDTracingHeaderType>>(
-            new NSString("example.invalid"),
-            new NSSet<DDTracingHeaderType>(DDTracingHeaderType.Datadog));
-        using var objcDelegate = new DDNSURLSessionDelegate(headerTypes);
-
-        Assert(objcDelegate.Handle != IntPtr.Zero, "DDNSURLSessionDelegate has a null handle.");
-
-        Report("both URLSession delegates constructed");
-    }
-
-    private static void ExposesWebViewTracking()
-    {
-        // A WKWebView is not created here: instantiating one on a simulator spins up the whole web
-        // content process, which is slow and flaky in CI for no added coverage. That the class
-        // resolves proves the framework is linked, which is what this package contributes.
-        Assert(
-            Class.GetHandle(typeof(DDWebViewTracking)) != IntPtr.Zero,
-            "DDWebViewTracking did not resolve to a native class.");
-
-        Report("DDWebViewTracking is available");
-    }
-
-    private static void ExposesCrashReporter()
-    {
-        // PLCrashReporter is the engine underneath DatadogCrashReporting, and the one framework in
-        // the set that ships as a static archive rather than a dynamic framework - so it is the one
-        // most sensitive to the ForceLoad/SmartLink settings on the NativeReference.
-        var configuration = new PLCrashReporterConfig(
-            PLCrashReporterSignalHandlerType.Bsd,
-            PLCrashReporterSymbolicationStrategy.None);
-
-        Assert(configuration.Handle != IntPtr.Zero, "PLCrashReporterConfig has a null handle.");
-        Report("PLCrashReporter is available and configurable");
+        return (DateTime.UtcNow - started).TotalSeconds;
     }
 
     private static void StopsCleanly()
     {
-        DDRUMMonitor.Shared.StopSession();
+        DDRUMMonitor.Shared().StopSession();
         DDDatadog.ClearAllData();
         DDDatadog.StopInstance();
 
-        Assert(!DDDatadog.IsInitialized, "DDDatadog.IsInitialized was still true after StopInstance.");
+        Assert(!DDDatadog.IsInitialized(), "DDDatadog.IsInitialized was still true after StopInstance.");
         Report("session stopped, data cleared and instance torn down");
     }
 
@@ -631,4 +548,16 @@ public static class SmokeTests
             throw new InvalidOperationException(message);
         }
     }
+}
+
+/// <summary>
+/// A minimal URLSession delegate for <see cref="SmokeTests.InstrumentsUrlSessionByType"/>.
+/// </summary>
+/// <remarks>
+/// [Register] matters: the instrumentation is installed on the Objective-C class, so the type has
+/// to be visible to that runtime by name.
+/// </remarks>
+[Register(nameof(E2EUrlSessionDelegate))]
+public sealed class E2EUrlSessionDelegate : NSObject, INSUrlSessionDataDelegate
+{
 }

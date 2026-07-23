@@ -74,7 +74,7 @@ fi
 
 FRAMEWORKS="$1"
 if [ -z "$FRAMEWORKS" ]; then
-    FRAMEWORKS="CrashReporter DatadogCore DatadogCrashReporting DatadogInternal DatadogLogs DatadogObjc DatadogRUM DatadogSessionReplay DatadogTrace DatadogWebViewTracking OpenTelemetryApi"
+    FRAMEWORKS="DatadogCore DatadogCrashReporting DatadogFlags DatadogInternal DatadogLogs DatadogProfiling DatadogRUM DatadogSessionReplay DatadogTrace DatadogWebViewTracking OpenTelemetryApi"
 fi
 
 # The SDK the headers are parsed against. Nothing is compiled here, so this only has to be a

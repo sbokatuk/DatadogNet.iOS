@@ -1,6 +1,11 @@
+using DatadogCore;
 using DatadogCrashReporting;
-using DatadogObjc;
+// DDCoreLoggerLevel is declared in DatadogInternal, which every module depends on.
+using DatadogInternal;
+using DatadogLogs;
+using DatadogRUM;
 using DatadogSessionReplay;
+using DatadogTrace;
 
 namespace DatadogNetExample;
 
@@ -11,6 +16,11 @@ namespace DatadogNetExample;
 /// This is the shape most apps end up with: one method called once at startup that configures the
 /// SDK and turns on the features the app uses. Everything after that goes through
 /// <see cref="Rum"/> and <see cref="Logger"/>.
+/// <para>
+/// Note the <c>using</c> list. Up to dd-sdk-ios 2.x every DD* type lived in one <c>DatadogObjc</c>
+/// namespace; 3.0 moved them into the module each belongs to, so a per-feature import is now the
+/// norm.
+/// </para>
 /// </remarks>
 public static class Datadog
 {
@@ -25,7 +35,7 @@ public static class Datadog
     private static DDLogger? logger;
 
     /// <summary>The RUM monitor, for reporting views, actions and errors.</summary>
-    public static DDRUMMonitor Rum => DDRUMMonitor.Shared;
+    public static DDRUMMonitor Rum => DDRUMMonitor.Shared();
 
     /// <summary>The app's logger.</summary>
     public static DDLogger Logger =>
@@ -40,19 +50,19 @@ public static class Datadog
         var configuration = new DDConfiguration(clientToken: ClientToken, env: "sample")
         {
             Service = "datadognet-ios-example",
-            // Pick the site your Datadog organisation is on - Us1, Us3, Us5, Eu1, Ap1 or Us1_fed.
-            // Sending to the wrong one is the most common reason events never show up.
-            Site = DDSite.Us1,
+            // Pick the site your Datadog organisation is on - Us1, Us3, Us5, Eu1, Ap1, Ap2 or
+            // Us1_fed. Sending to the wrong one is the most common reason events never show up.
+            Site = DDSite.Us1(),
         };
 
         // Consent must be set before, or as part of, initialization. Pending collects events but
         // holds them on the device until consent is granted or refused, which is what a GDPR
         // prompt-on-first-launch flow wants.
-        DDDatadog.InitializeWithConfiguration(configuration, DDTrackingConsent.Granted);
+        DDDatadog.InitializeWithConfiguration(configuration, DDTrackingConsent.Granted());
 
         // Logs SDK problems to the Xcode console. Worth leaving on while integrating - it is how
         // you find out that, say, the client token is wrong.
-        DDDatadog.VerbosityLevel = DDSDKVerbosityLevel.Warn;
+        DDDatadog.SetVerbosityLevel(DDCoreLoggerLevel.Warn);
 
         EnableRum();
         EnableLogs();
@@ -60,7 +70,8 @@ public static class Datadog
         EnableSessionReplay();
 
         // Crash reporting is enabled after the SDK is initialized, never before: it attaches to
-        // the RUM and Logs features to report the crash on the next launch.
+        // RUM to report the crash on the next launch. From 3.0 the engine is KSCrash, and crashes
+        // are reported through RUM error tracking rather than Logs.
         DDCrashReporter.Enable();
     }
 
@@ -73,6 +84,8 @@ public static class Datadog
             // Detects rage taps, dead clicks and error taps.
             TrackFrustrations = true,
             TrackBackgroundEvents = true,
+            // New in 3.0: reports memory warnings as RUM errors.
+            TrackMemoryWarnings = true,
 
             // Automatic UIKit instrumentation. MAUI renders through UIKit, so these report views
             // and taps without any per-page code - the manual StartView calls in MainPage are
@@ -114,13 +127,10 @@ public static class Datadog
     {
         // Session Replay requires RUM, so it is enabled last.
         //
-        // From dd-sdk-ios 2.19.0 the single defaultPrivacyLevel is replaced by three independent
-        // levels, and they are required by the initializer rather than defaulted - so the choice
-        // is made deliberately rather than inherited. Replay records the screen, and these decide
-        // what is redacted *on the device*, before anything is uploaded.
-        //
-        // These are the most private settings: mask every text and input, mask every image, and
-        // hide touches. Loosen them deliberately, not by accident.
+        // The three privacy levels are required arguments, so the choice is never implicit. Replay
+        // records the screen, and these decide what is redacted *on the device*, before anything is
+        // uploaded. These are the most private settings: mask every text and input, mask every
+        // image, hide touches. Loosen them deliberately, not by accident.
         DDSessionReplay.EnableWith(new DDSessionReplayConfiguration(
             replaySampleRate: 100,
             textAndInputPrivacyLevel: DDTextAndInputPrivacyLevel.MaskAll,

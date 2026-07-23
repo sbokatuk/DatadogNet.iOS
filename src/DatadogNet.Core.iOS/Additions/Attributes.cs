@@ -7,18 +7,21 @@ using System;
 using System.Collections.Generic;
 using Foundation;
 
-namespace DatadogObjc
+namespace DatadogCore
 {
 	/// <summary>
 	/// Converts C# attribute dictionaries into the <c>NSDictionary&lt;NSString, NSObject&gt;</c>
 	/// the Datadog API takes.
 	/// </summary>
 	/// <remarks>
-	/// Almost every RUM and Logs call ends in an attributes parameter, and the bound signature
+	/// Lives in DatadogCore because RUM, Logs and Trace all need it and all depend on Core.
+/// <para>
+/// Almost every RUM and Logs call ends in an attributes parameter, and the bound signature
 	/// requires one even when there is nothing to attach - so the raw binding forces
 	/// <c>new NSDictionary&lt;NSString, NSObject&gt;()</c> at hundreds of call sites, and forces
 	/// callers to hand-wrap every value in an <c>NSObject</c>. These helpers are what the
-	/// convenience overloads throughout this assembly are built on.
+	/// convenience overloads across these packages are built on.
+	/// </para>
 	/// </remarks>
 	public static class DatadogAttributes
 	{

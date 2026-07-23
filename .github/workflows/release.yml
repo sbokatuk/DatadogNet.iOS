@@ -152,21 +152,23 @@ jobs:
               id="DatadogNet.${package}.iOS"
               echo "| \`${id}\` | \`${framework}\` | [${VERSION}](https://www.nuget.org/packages/${id}/${VERSION}) |"
             done <<'PACKAGES'
-          Objc:DatadogObjc
           Core:DatadogCore
-          Internal:DatadogInternal
-          Logs:DatadogLogs
           RUM:DatadogRUM
-          SessionReplay:DatadogSessionReplay
+          Logs:DatadogLogs
           Trace:DatadogTrace
+          SessionReplay:DatadogSessionReplay
           WebViewTracking:DatadogWebViewTracking
           CrashReporting:DatadogCrashReporting
-          CrashReporter:CrashReporter
+          Flags:DatadogFlags
+          Profiling:DatadogProfiling
+          Internal:DatadogInternal
           OpenTelemetryApi:OpenTelemetryApi
+          Objc:(compatibility meta-package)
           PACKAGES
             echo
             echo "\`\`\`"
-            echo "dotnet add package DatadogNet.Objc.iOS --version ${VERSION}"
+            echo "dotnet add package DatadogNet.Core.iOS --version ${VERSION}"
+            echo "dotnet add package DatadogNet.RUM.iOS --version ${VERSION}"
             echo "\`\`\`"
             echo
             echo "## Licensing"
