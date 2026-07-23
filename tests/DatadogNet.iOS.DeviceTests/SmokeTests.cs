@@ -457,31 +457,78 @@ public static class SmokeTests
     /// </remarks>
     private static void RumEventMapperIsInvoked()
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline && (viewEventsMapped == 0 || actionEventsMapped == 0))
-        {
-            Thread.Sleep(100);
-        }
+        // Mappers run on the SDK's own write queue, so this waits rather than asserting straight
+        // away - and keeps producing events while it waits, instead of hoping the ones already
+        // queued drain in time. A fixed short deadline over a single batch is what made this flaky:
+        // it passed locally in milliseconds and timed out at five seconds on a loaded CI runner
+        // whose simulator had taken 46 seconds just to boot.
+        var elapsed = WaitForAsyncWork(
+            () => viewEventsMapped > 0 && actionEventsMapped > 0,
+            nudge: attempt =>
+            {
+                var monitor = DDRUMMonitor.Shared();
+                monitor.StartViewWithKey($"mapper-nudge-{attempt}", "Mapper Nudge", DatadogAttributes.Empty);
+                monitor.AddActionWithType(DDRUMActionType.Tap, $"mapper-nudge-{attempt}", DatadogAttributes.Empty);
+                monitor.StopViewWithKey($"mapper-nudge-{attempt}", DatadogAttributes.Empty);
+            });
 
-        Assert(viewEventsMapped > 0, "The view event mapper was never invoked.");
-        Assert(actionEventsMapped > 0, "The action event mapper was never invoked.");
+        Assert(viewEventsMapped > 0, $"The view event mapper was never invoked (waited {elapsed:0.0}s).");
+        Assert(actionEventsMapped > 0, $"The action event mapper was never invoked (waited {elapsed:0.0}s).");
 
-        Report($"mappers invoked: {viewEventsMapped} view, {actionEventsMapped} action");
+        Report($"mappers invoked after {elapsed:0.0}s: {viewEventsMapped} view, {actionEventsMapped} action");
     }
 
     private static void LogsEventMapperRedacts()
     {
-        var logger = DDLogger.Create(name: "redaction", printLogsToConsole: false);
-        logger.Log(DDLogLevel.Info, "e2e redact me");
+        var elapsed = WaitForAsyncWork(
+            () => logEventsMapped > 0,
+            nudge: attempt => DDLogger
+                .Create(name: "redaction", printLogsToConsole: false)
+                .Log(DDLogLevel.Info, attempt == 0 ? "e2e redact me" : $"e2e mapper nudge {attempt}"));
 
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline && logEventsMapped == 0)
+        Assert(logEventsMapped > 0, $"The Logs event mapper was never invoked (waited {elapsed:0.0}s).");
+        Report($"log events mapped after {elapsed:0.0}s: {logEventsMapped}");
+    }
+
+    /// <summary>
+    /// Waits for an asynchronous SDK side effect, re-driving it periodically, and returns how long
+    /// it took.
+    /// </summary>
+    /// <param name="satisfied">Checked between attempts; the wait ends as soon as it is true.</param>
+    /// <param name="nudge">
+    /// Produces more of the work being waited on. Called once per second with an increasing
+    /// attempt number.
+    /// </param>
+    /// <remarks>
+    /// The generous ceiling is deliberate. Nothing here is expected to take anywhere near it - the
+    /// wait ends the moment the condition holds, so a healthy run costs milliseconds - but a CI
+    /// runner under contention is far slower than a developer's machine, and a mapper that never
+    /// fires is a real defect worth failing on rather than a timeout worth shrugging at.
+    /// </remarks>
+    private static double WaitForAsyncWork(Func<bool> satisfied, Action<int> nudge)
+    {
+        var started = DateTime.UtcNow;
+        var deadline = started.AddSeconds(30);
+        var attempt = 0;
+
+        while (!satisfied())
         {
-            Thread.Sleep(100);
+            if (DateTime.UtcNow >= deadline)
+            {
+                break;
+            }
+
+            nudge(attempt++);
+
+            // Re-checked at a finer interval than it is nudged, so a healthy run returns promptly
+            // rather than always paying a full second.
+            for (var i = 0; i < 10 && !satisfied(); i++)
+            {
+                Thread.Sleep(100);
+            }
         }
 
-        Assert(logEventsMapped > 0, "The Logs event mapper was never invoked.");
-        Report($"log events mapped: {logEventsMapped}");
+        return (DateTime.UtcNow - started).TotalSeconds;
     }
 
     private static void StopsCleanly()
