@@ -1,5 +1,11 @@
 # DatadogNet.iOS
 
+[![NuGet](https://img.shields.io/nuget/v/DatadogNet.RUM.iOS?label=nuget)](https://www.nuget.org/packages/DatadogNet.RUM.iOS)
+[![release](https://github.com/sbokatuk/DatadogNet.iOS/actions/workflows/release.yml/badge.svg)](https://github.com/sbokatuk/DatadogNet.iOS/actions/workflows/release.yml)
+[![Targets: net8.0 | net9.0 | net10.0](https://img.shields.io/badge/targets-net8.0%20%7C%20net9.0%20%7C%20net10.0-512BD4)](#packages)
+[![dd-sdk-ios 3.14.0](https://img.shields.io/badge/dd--sdk--ios-3.14.0-632CA6)](https://github.com/DataDog/dd-sdk-ios/releases/tag/3.14.0)
+[![Licence: MIT AND Apache-2.0](https://img.shields.io/badge/licence-MIT%20AND%20Apache--2.0-green)](#licence)
+
 .NET for iOS and .NET MAUI bindings for the native
 [Datadog iOS SDK (`dd-sdk-ios`)](https://github.com/DataDog/dd-sdk-ios).
 
@@ -438,6 +444,8 @@ dotnet build samples/DatadogNet.iOS.Example/DatadogNetExample.csproj -p:RuntimeI
    and port real changes across; the script's header lists the fixes the committed files carry that
    regenerating would otherwise undo.
 5. `./build/BuildNugets.sh` and run both test suites.
+6. Update the `dd-sdk-ios` badge at the top of this file — both its label and its release link.
+   It is hardcoded, so nothing else will notice when it goes stale.
 
 If Datadog adds or removes a framework, `FetchXcFrameworks.sh` fails loudly rather than silently
 dropping a package — update the `FRAMEWORKS` list, add or remove the binding project, and update
