@@ -147,5 +147,19 @@ namespace DatadogLogs
 				throw new ArgumentOutOfRangeException (nameof (level), level, "Unknown log level.");
 			}
 		}
+
+		/// <summary>Adds an attribute to every subsequent entry from this logger.</summary>
+		/// <remarks>
+		/// The generated overload takes an <see cref="NSObject"/>, so a logger-wide attribute has to
+		/// be hand-wrapped — which is what <see cref="DatadogAttributes"/> exists to avoid for the
+		/// dictionary-taking members.
+		/// </remarks>
+		public void AddAttribute (string key, object? value)
+		{
+			if (key is null)
+				throw new ArgumentNullException (nameof (key));
+
+			AddAttributeForKey (key, DatadogAttributes.ToNSObject (value, key));
+		}
 	}
 }

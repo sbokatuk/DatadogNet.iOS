@@ -31,12 +31,14 @@ public sealed class AppDelegate : UIApplicationDelegate
         // The checks run on the main thread deliberately, unlike the FFmpegKit equivalent: the
         // Datadog SDK instruments UIKit, and DDRUMMonitor asserts it is reached from the main
         // thread. Nothing here blocks for long enough to trip the watchdog.
-        RunAndReport();
+        // Fire and forget: FinishedLaunching cannot be async, and the continuations resume on the
+        // main thread through UIKit's synchronisation context - which is what the SDK requires.
+        _ = RunAndReportAsync();
 
         return true;
     }
 
-    private static void RunAndReport()
+    private static async Task RunAndReportAsync()
     {
         SmokeTests.Reporter = message => Console.WriteLine($"    {message}");
 
@@ -46,7 +48,7 @@ public sealed class AppDelegate : UIApplicationDelegate
         {
             try
             {
-                test.Execute();
+                await test.Execute();
                 Console.WriteLine($"PASS {test.Name}");
             }
             catch (Exception exception)

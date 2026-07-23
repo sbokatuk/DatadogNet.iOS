@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using DatadogCore;
 using Foundation;
 
@@ -114,6 +115,59 @@ namespace DatadogRUM
 				throw new ArgumentNullException (nameof (keys));
 
 			RemoveViewAttributesForKeys (keys);
+		}
+
+		/// <summary>Adds an attribute to every subsequent RUM event.</summary>
+		/// <remarks>
+		/// The generated overload takes an <see cref="NSObject"/>, so setting a single attribute
+		/// means hand-wrapping the value — which is exactly what <see cref="DatadogAttributes"/>
+		/// exists to avoid for the dictionary-taking members.
+		/// </remarks>
+		public void AddAttribute (string key, object? value)
+		{
+			if (key is null)
+				throw new ArgumentNullException (nameof (key));
+
+			AddAttributeForKey (key, DatadogAttributes.ToNSObject (value, key));
+		}
+
+		/// <summary>Adds an attribute to the active view, which propagates to its child events.</summary>
+		public void AddViewAttribute (string key, object? value)
+		{
+			if (key is null)
+				throw new ArgumentNullException (nameof (key));
+
+			AddViewAttributeForKey (key, DatadogAttributes.ToNSObject (value, key));
+		}
+
+		/// <summary>Records that a feature flag was evaluated, so RUM events can be split by variant.</summary>
+		public void AddFeatureFlagEvaluation (string name, object? value)
+		{
+			if (name is null)
+				throw new ArgumentNullException (nameof (name));
+
+			AddFeatureFlagEvaluationWithName (name, DatadogAttributes.ToNSObject (value, name));
+		}
+
+		/// <summary>
+		/// The id of the current RUM session, or <see langword="null"/> if there is none — because
+		/// RUM is not enabled, or because this session was dropped by sampling.
+		/// </summary>
+		/// <remarks>
+		/// Worth attaching to a support ticket: it is what turns "the app was slow" into a session
+		/// you can watch. The generated member answers through a completion block on the SDK's own
+		/// queue; this is the same call in the shape C# already has for asynchrony.
+		/// </remarks>
+		public Task<string?> GetCurrentSessionIdAsync ()
+		{
+			// RunContinuationsAsynchronously: the completion arrives on whichever queue the SDK
+			// answers on, and a synchronous continuation would run the caller's await-resumption
+			// there too.
+			var completion = new TaskCompletionSource<string?> (TaskCreationOptions.RunContinuationsAsynchronously);
+
+			CurrentSessionIDWithCompletion (sessionId => completion.TrySetResult (sessionId?.ToString ()));
+
+			return completion.Task;
 		}
 	}
 
