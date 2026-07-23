@@ -1,5 +1,6 @@
 using DatadogLogs;
 using DatadogRUM;
+using DatadogTrace;
 
 namespace DatadogNetExample;
 
@@ -79,6 +80,88 @@ public partial class MainPage : ContentPage
         }
 
         Record("work finished, view stopped");
+    }
+
+    private async void OnShowSessionId(object? sender, EventArgs e)
+    {
+        // Worth attaching to a support ticket: it is what turns "the app was slow" into a session
+        // you can watch. The raw binding answers through a completion block on the SDK's own queue.
+        var sessionId = await Datadog.Rum.GetCurrentSessionIdAsync();
+
+        Record($"session {sessionId ?? "(none - RUM is off, or this session was sampled out)"}");
+    }
+
+    private async void OnTraceRequest(object? sender, EventArgs e)
+    {
+        var tracer = DDTracer.Shared();
+
+        // The operation name is what APM groups by, so it has to be low cardinality - never a URL
+        // and never anything with an id in it.
+        var span = tracer.StartSpan("http.request");
+
+        try
+        {
+            span.SetTag("http.method", "GET");
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, "https://example.com/api/items");
+
+            // This is the whole point of distributed tracing: the receiving service reads these
+            // headers and continues the same trace, so one flame graph spans both sides.
+            //
+            // The raw API needs a dance that is not obvious from the signatures - construct a
+            // writer, hand it to Inject as though it were the carrier, then read the headers back
+            // off the writer, once per format.
+            foreach (var header in span.InjectHeaders(tracer))
+            {
+                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            }
+
+            Record($"trace {span.GetTraceId(tracer)}");
+            Record($"propagating {request.Headers.Count()} headers");
+
+            using var client = new HttpClient();
+            using var response = await client.SendAsync(request);
+
+            span.SetTag("http.status_code", (double)(int)response.StatusCode);
+            Record($"request finished: {(int)response.StatusCode}");
+        }
+        catch (Exception exception)
+        {
+            // Sets error.type, error.message and error.stack together. Setting only the message
+            // leaves a span marked as an error with nothing in the APM error panel to act on.
+            span.SetError(exception);
+            Record($"request failed: {exception.GetType().Name}");
+        }
+        finally
+        {
+            span.Finish();
+        }
+    }
+
+    private void OnFailedSpan(object? sender, EventArgs e)
+    {
+        var tracer = DDTracer.Shared();
+        var span = tracer.StartSpan("checkout.submit");
+
+        span.Log(new Dictionary<string, object?>
+        {
+            ["event"] = "validation",
+            ["fields"] = 3,
+        });
+
+        try
+        {
+            throw new InvalidOperationException("The cart expired before checkout completed.");
+        }
+        catch (Exception exception)
+        {
+            span.SetError(exception);
+            Record($"span {span.GetSpanId(tracer)} marked as failed");
+        }
+        finally
+        {
+            span.Finish();
+        }
     }
 
     private void OnWriteLogs(object? sender, EventArgs e)

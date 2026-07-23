@@ -18,7 +18,18 @@ namespace DatadogNet.iOS.DeviceTests;
 /// <summary>A single on-simulator check. Throws to fail.</summary>
 /// <param name="Name">Human readable name, reported to stdout.</param>
 /// <param name="Execute">Runs the check.</param>
-public sealed record SmokeTest(string Name, Action Execute);
+public sealed record SmokeTest(string Name, Func<Task> Execute)
+{
+    /// <summary>A synchronous check, which most of them are.</summary>
+    public SmokeTest(string name, Action execute)
+        : this(name, () =>
+        {
+            execute();
+            return Task.CompletedTask;
+        })
+    {
+    }
+}
 
 /// <summary>
 /// End-to-end checks that only mean anything on a real device or simulator: they load the native
@@ -64,12 +75,16 @@ public static class SmokeTests
         new("propagates view-level attributes to child events", ViewAttributesPropagate),
         new("enables Logs and writes every level", EnablesLogsAndWritesEveryLevel),
         new("enables Trace", EnablesTrace),
+        new("drives a span and reads its ids", DrivesASpanAndReadsItsIds),
+        new("injects trace headers in every format", InjectsTraceHeaders),
         new("enables Session Replay", EnablesSessionReplay),
         new("applies per-view Session Replay privacy overrides", SessionReplayPrivacyOverridesApply),
         new("enables crash reporting", EnablesCrashReporting),
         new("exposes WebView tracking", ExposesWebViewTracking),
         new("instruments a URLSession delegate by type", InstrumentsUrlSessionByType),
         new("drives RUM and Logs through the ergonomic overloads", ErgonomicOverloadsWork),
+        new("sets single attributes without hand-wrapping", SingleValueAttributesWork),
+        new("reads the current RUM session id", ReadsCurrentSessionId),
         new("invokes a RUM event mapper", RumEventMapperIsInvoked),
         new("invokes a Logs event mapper and redacts a message", LogsEventMapperRedacts),
         new("stops the RUM session and the SDK instance", StopsCleanly),
@@ -303,6 +318,162 @@ public static class SmokeTests
 
         Report("Trace enabled; Datadog, B3 and W3C header writers all constructed");
     }
+
+    /// <summary>Starts a real span and reads back what the SDK made of it.</summary>
+    /// <remarks>
+    /// Until 3.14.0.2 nothing in this suite started a span at all — <see cref="EnablesTrace"/> only
+    /// constructed the header writers — so the tracing path was enabled and never driven. That gap
+    /// is why a defect in reading span ids reached a consumer of these packages.
+    /// </remarks>
+    private static void DrivesASpanAndReadsItsIds()
+    {
+        var tracer = DDTracer.Shared();
+        var span = tracer.StartSpan("device-test-span");
+
+        span.SetTag("kind", "smoke");
+        span.SetTag("count", NSNumber.FromInt32(1));
+        span.SetTag("enabled", true);
+
+        // Both are this repository's own members: OTSpanContext exposes no ids at all.
+        var traceId = span.GetTraceId(tracer);
+        var spanId = span.GetSpanId(tracer);
+
+        Report($"trace {traceId} span {spanId}");
+
+        // The shape is the assertion, not merely non-emptiness. A trace id is what Datadog
+        // correlates a RUM resource to an APM trace on, and it must match what dd-sdk-android's own
+        // DatadogInterceptor writes: 32 lowercase hex characters for the trace, decimal for the
+        // span. Asserting only "not empty" is exactly how the wrong rendering shipped once.
+        Assert(
+            traceId.Length == 32 && traceId.All(IsLowerHex),
+            $"The trace id '{traceId}' is not 32 lowercase hex characters.");
+
+        Assert(traceId.Any(c => c != '0'), "The trace id is all zeros, so no trace was started.");
+
+        Assert(
+            spanId.Length > 0 && spanId.All(char.IsAsciiDigit),
+            $"The span id '{spanId}' is not decimal.");
+
+        span.SetError(new InvalidOperationException("span failure"));
+        span.Log(new Dictionary<string, object?> { ["event"] = "retry", ["attempt"] = 2 });
+
+        span.Finish();
+
+        Report("span tagged, errored, logged and finished");
+    }
+
+    /// <summary>Injects into every format and checks the ids agree across them.</summary>
+    /// <remarks>
+    /// The writer-is-also-the-carrier dance lives in <c>InjectHeaders</c> now, so what is checked
+    /// here is that it produces the headers a backend needs — and that the id the span reports is
+    /// the same one that goes on the wire, which is the invariant that would have caught the
+    /// rendering defect.
+    /// </remarks>
+    private static void InjectsTraceHeaders()
+    {
+        var tracer = DDTracer.Shared();
+        var span = tracer.StartSpan("injected-span");
+
+        var headers = span.InjectHeaders(
+            tracer,
+            OTHeaderFormats.Datadog | OTHeaderFormats.TraceContext | OTHeaderFormats.B3Multi);
+
+        Report($"headers: {string.Join(", ", headers.Keys)}");
+
+        Assert(
+            headers.ContainsKey("x-datadog-trace-id"),
+            "Injection produced no x-datadog-trace-id, so a trace would not continue into a backend.");
+
+        Assert(headers.ContainsKey("traceparent"), "Injection produced no W3C traceparent header.");
+        Assert(headers.ContainsKey("X-B3-TraceId"), "Injection produced no B3 headers.");
+
+        var traceId = span.GetTraceId(tracer);
+
+        // traceparent carries the full 128 bits as hex and is derived independently of everything
+        // GetTraceId does, so it is a second opinion rather than a restatement.
+        var traceparent = headers["traceparent"].Split('-');
+
+        Assert(
+            traceparent.Length >= 2 && traceparent[1] == traceId,
+            $"The trace id '{traceId}' disagrees with traceparent '{headers["traceparent"]}'.");
+
+        // The Datadog header carries only the low 64 bits, in decimal. They must be the tail of the
+        // reassembled id - this is the half that used to be reported on its own.
+        if (ulong.TryParse(headers["x-datadog-trace-id"], out var low))
+        {
+            var expected = low.ToString("x16", System.Globalization.CultureInfo.InvariantCulture);
+
+            Assert(
+                traceId.EndsWith(expected, StringComparison.Ordinal),
+                $"The trace id '{traceId}' does not end with '{expected}', the low 64 bits the " +
+                $"x-datadog-trace-id header carries as '{headers["x-datadog-trace-id"]}'.");
+        }
+
+        span.Finish();
+
+        // A span with no formats selected must produce nothing rather than throwing.
+        var quiet = tracer.StartSpan("no-formats");
+        Assert(quiet.InjectHeaders(tracer, 0).Count == 0, "Selecting no formats still wrote headers.");
+        quiet.Finish();
+    }
+
+    /// <summary>The single-value attribute overloads, which need no hand-wrapped NSObject.</summary>
+    private static void SingleValueAttributesWork()
+    {
+        var monitor = DDRUMMonitor.Shared();
+
+        using (monitor.StartView("single-value-view"))
+        {
+            monitor.AddAttribute("global.string", "text");
+            monitor.AddAttribute("global.int", 42);
+            monitor.AddAttribute("global.null", null);
+
+            monitor.AddViewAttribute("view.bool", true);
+            monitor.AddViewAttribute("view.date", new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+            monitor.AddFeatureFlagEvaluation("new-checkout", true);
+            monitor.AddFeatureFlagEvaluation("checkout-variant", "b");
+
+            monitor.RemoveAttributeForKey("global.int");
+        }
+
+        var logger = DDLogger.Create(name: "single-value");
+        logger.AddAttribute("tenant", "acme");
+        logger.AddAttribute("retries", 3);
+        // The single-argument overload: `Info(message, attributes)` is generated without
+        // [NullAllowed] on the dictionary, so passing null throws rather than reaching the SDK.
+        logger.Info("with logger-wide attributes");
+
+        // The ergonomic Log does accept a null attributes dictionary, and should.
+        logger.Log(DDLogLevel.Info, "with no attributes at all");
+
+        // The converter itself, now public - the reason none of the above needs an NSObject.
+        Assert(
+            DatadogAttributes.ToNSObject("text", "k") is NSString,
+            "ToNSObject did not convert a string to an NSString.");
+
+        Assert(
+            DatadogAttributes.ToNSObject(null, "k") is NSNull,
+            "ToNSObject did not convert null to NSNull - an explicitly empty attribute and an " +
+            "unset one are different things in a RUM event.");
+
+        Report("single-value attributes accepted on RUM, view, feature flags and a logger");
+    }
+
+    /// <summary>The session id, which answers through a completion block on the SDK's queue.</summary>
+    private static async Task ReadsCurrentSessionId()
+    {
+        var sessionId = await DDRUMMonitor.Shared().GetCurrentSessionIdAsync();
+
+        Report($"session {sessionId ?? "(none)"}");
+
+        // Non-null because RUM is enabled and sampled at 100 above. A null here means the callback
+        // never fired, which is the failure mode the Task wrapper exists to make visible.
+        Assert(sessionId is not null, "The SDK reported no RUM session id.");
+    }
+
+    /// <summary>Whether a character is a lowercase hex digit.</summary>
+    private static bool IsLowerHex(char c) => char.IsAsciiDigit(c) || c is >= 'a' and <= 'f';
 
     private static void EnablesSessionReplay()
     {

@@ -28,6 +28,19 @@
             <Button Text="Track a unit of work as a view"
                     Clicked="OnTrackWork" />
 
+            <Button Text="Show the current session id"
+                    Clicked="OnShowSessionId" />
+
+            <BoxView HeightRequest="1" Color="LightGray" />
+
+            <Label Text="Trace" FontSize="18" FontAttributes="Bold" />
+
+            <Button Text="Trace an outgoing HTTP request"
+                    Clicked="OnTraceRequest" />
+
+            <Button Text="Record a failed span"
+                    Clicked="OnFailedSpan" />
+
             <BoxView HeightRequest="1" Color="LightGray" />
 
             <Label Text="Logs" FontSize="18" FontAttributes="Bold" />
