@@ -305,10 +305,68 @@ there; nothing is hidden or renamed.
 | `DDDatadog.SetUserInfoWithUserId(id, null, null, empty)` | `DDDatadog.SetUserInfo(id)` |
 | `DDTrackingConsent.Granted()` (a factory, not an enum) | `DDDatadog.SetTrackingConsent(TrackingConsent.Granted)` |
 | `DDURLSessionInstrumentation.EnableWithConfiguration(...)` with a raw `Class` handle | `DDURLSessionInstrumentation.Enable<TDelegate>()` |
+| a one-element dictionary round-trip to convert one value | `DatadogAttributes.ToNSObject(value, key)` |
+| `monitor.AddAttributeForKey(k, nsObject)` | `monitor.AddAttribute(k, value)` / `AddViewAttribute` / `AddFeatureFlagEvaluation` |
+| `monitor.CurrentSessionIDWithCompletion(block)` | `await monitor.GetCurrentSessionIdAsync()` |
+| construct a writer, pass it as the carrier, read headers back off it — once per format | `span.InjectHeaders(tracer)` |
+| no way at all to read a span's ids | `span.GetTraceId(tracer)` / `span.GetSpanId(tracer)` |
+| `span.SetErrorWithKind(kind, message, stack)` from an exception you must decompose | `span.SetError(exception)` |
 
 Attribute values may be strings, any numeric type, `bool`, `DateTime`, `DateTimeOffset`, `Guid`,
 enums, `NSObject`s, arrays, and nested dictionaries. Anything else throws `ArgumentException` rather
 than being silently dropped. `DatadogAttributes` lives in `DatadogCore`.
+
+### Trace ids
+
+`GetTraceId` returns **32 lowercase hexadecimal characters** and `GetSpanId` returns **decimal**.
+The asymmetry is not a choice — it is Datadog's wire format, and matching it is what makes a RUM
+resource correlate with its APM trace. dd-sdk-android's own `DatadogInterceptor` writes
+`_dd.trace_id` as `DatadogTraceId.toHexString()` and `_dd.span_id` as `String.valueOf(long)`.
+
+Reading the ids takes work because `OTSpanContext` exposes none: they are recovered by injecting
+into a Datadog-format writer, and the trace id arrives in two pieces — the decimal low 64 bits in
+`x-datadog-trace-id`, and the high 64 as `_dd.p.tid` inside `x-datadog-tags`. Using only the former
+yields a decimal string naming half of a different-looking id, which is a mistake that reached a
+release of a consumer of this package before it was caught.
+
+---
+
+## API coverage
+
+Measured by diffing each framework's generated `-Swift.h` against `ApiDefinitions.cs`, not estimated.
+
+| Framework | Objective-C types | Bound |
+| --- | ---: | ---: |
+| `DatadogRUM` | 377 | 377 |
+| `DatadogLogs` | 16 | 16 |
+| `DatadogCore` | 12 | 12 |
+| `DatadogTrace` | 12 | 12 |
+| `DatadogSessionReplay` | 4 | 4 |
+| `DatadogInternal` | 2 | 2 |
+| `DatadogCrashReporting` | 1 | 1 |
+| `DatadogWebViewTracking` | 1 | 1 |
+
+Member coverage is the same story: of 61 selectors and properties on `DatadogCore`, 59 are exported,
+and the two that are not are `init` and `new`, which `[DisableDefaultCtor]` removes on purpose.
+
+**What is missing is missing upstream.** Three parts of dd-sdk-ios have no Objective-C projection at
+all, so there is nothing for a binding to bind:
+
+| | Swift types | ObjC types | Consequence |
+| --- | ---: | ---: | --- |
+| `DatadogFlags` | 15 | **0** | Feature Flags are unreachable from C#. The API leans on generics (`FlagDetails<T>`) and enums with associated values (`AnyValue`), neither of which Swift projects into Objective-C. |
+| `DatadogProfiling` | 2 | **0** | Profiling is unreachable. |
+| `OpenTelemetryApi` | — | no `-Swift.h` at all | A pure-Swift module. `DatadogNet.OpenTelemetryApi.iOS` can only ever be a link-time dependency of `DatadogNet.Trace.iOS`. |
+
+`DatadogTrace` is additionally 24 public Swift types projected down to 12, and the casualty is
+`OTelTracerProvider` — so OpenTelemetry tracing is unreachable even though OpenTracing is not.
+
+`DatadogNet.Flags.iOS` and `DatadogNet.Profiling.iOS` therefore ship the frameworks and expose no
+callable API. They exist so the SDK is mirrored and so a future projection needs no new package.
+
+There is a way around this — a hand-written Swift `@objc` wrapper, which we can compile ourselves —
+and a working prototype for Flags lives in [`shims/DatadogFlagsObjc/`](shims/DatadogFlagsObjc/).
+Nothing ships yet.
 
 ---
 
