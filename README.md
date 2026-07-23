@@ -46,7 +46,7 @@ DDRUM.EnableWith(new DDRUMConfiguration(applicationID: "<RUM_APPLICATION_ID>"));
 
 Eleven packages, one per native framework in the Datadog release. Versions are
 `<dd-sdk-ios version>.<binding revision>` — `2.30.2.1` is dd-sdk-ios **2.30.2**, binding revision
-**2**. The fourth component belongs to this repository and advances when the bindings or packaging
+**1**. The fourth component belongs to this repository and advances when the bindings or packaging
 change while the native binaries stay put.
 
 | Package | Wraps | Depends on | What it is for |

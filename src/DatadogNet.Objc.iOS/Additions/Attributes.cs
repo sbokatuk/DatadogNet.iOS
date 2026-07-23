@@ -78,7 +78,24 @@ namespace DatadogObjc
 			return NSDictionary<NSString, NSObject>.FromObjectsAndKeys (values, keys, keys.Length);
 		}
 
-		static NSObject ToNSObject (object? value, string key)
+		/// <summary>
+		/// Converts a single value into the <see cref="NSObject"/> the Datadog API expects.
+		/// </summary>
+		/// <param name="value">The value.</param>
+		/// <param name="key">
+		/// The attribute name. Used only to name the value in any error, so that a rejected
+		/// attribute can be found without guessing which one it was.
+		/// </param>
+		/// <exception cref="ArgumentException">The value has no Objective-C representation.</exception>
+		/// <remarks>
+		/// Several members take a bare value rather than a dictionary -
+		/// <c>DDRUMMonitor.AddAttributeForKey</c>, <c>AddFeatureFlagEvaluationWithName</c>,
+		/// <c>DDLogs.AddAttributeForKey</c>, <c>DDLogger.AddAttributeForKey</c> - and they all need
+		/// the same conversion <see cref="From(IReadOnlyDictionary{string, object})"/> applies per
+		/// entry. Without this a caller either hand-wraps the value, which is what these helpers
+		/// exist to avoid, or round-trips a one-element dictionary to get at the result.
+		/// </remarks>
+		public static NSObject ToNSObject (object? value, string key)
 		{
 			// NSNull rather than skipping the key: "this attribute was explicitly empty" and "this
 			// attribute was not set" are different things in a RUM event, and dropping the key

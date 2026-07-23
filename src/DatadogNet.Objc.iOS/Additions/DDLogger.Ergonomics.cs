@@ -60,6 +60,15 @@ namespace DatadogObjc
 		/// </remarks>
 		public static void Enable (NSUrl? customEndpoint = null) =>
 			EnableWith (new DDLogsConfiguration (customEndpoint));
+
+		/// <summary>Adds an attribute to every log written by every logger.</summary>
+		public static void AddAttribute (string key, object? value)
+		{
+			if (key is null)
+				throw new ArgumentNullException (nameof (key));
+
+			AddAttributeForKey (key, DatadogAttributes.ToNSObject (value, key));
+		}
 	}
 
 	public partial class DDLogger
@@ -153,6 +162,15 @@ namespace DatadogObjc
 			default:
 				throw new ArgumentOutOfRangeException (nameof (level), level, "Unknown log level.");
 			}
+		}
+
+		/// <summary>Adds an attribute to every subsequent entry from this logger.</summary>
+		public void AddAttribute (string key, object? value)
+		{
+			if (key is null)
+				throw new ArgumentNullException (nameof (key));
+
+			AddAttributeForKey (key, DatadogAttributes.ToNSObject (value, key));
 		}
 	}
 }

@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Foundation;
 
 namespace DatadogObjc
@@ -96,6 +97,55 @@ namespace DatadogObjc
 				exception.StackTrace,
 				source,
 				DatadogAttributes.From (attributes));
+		}
+
+		/// <summary>Adds an attribute to every subsequent RUM event.</summary>
+		/// <remarks>
+		/// The bound overload takes an <see cref="NSObject"/>, so setting a session-wide attribute
+		/// means hand-wrapping the value - which is what <see cref="DatadogAttributes"/> exists to
+		/// avoid for the dictionary-taking members.
+		/// </remarks>
+		public void AddAttribute (string key, object? value)
+		{
+			if (key is null)
+				throw new ArgumentNullException (nameof (key));
+
+			AddAttributeForKey (key, DatadogAttributes.ToNSObject (value, key));
+		}
+
+		/// <summary>Adds several attributes to every subsequent RUM event.</summary>
+		public void AddAttributes (IReadOnlyDictionary<string, object?> attributes)
+		{
+			if (attributes is null)
+				throw new ArgumentNullException (nameof (attributes));
+
+			AddAttributes (DatadogAttributes.From (attributes));
+		}
+
+		/// <summary>Records that a feature flag was evaluated, so RUM events can be split by variant.</summary>
+		public void AddFeatureFlagEvaluation (string name, object? value)
+		{
+			if (name is null)
+				throw new ArgumentNullException (nameof (name));
+
+			AddFeatureFlagEvaluationWithName (name, DatadogAttributes.ToNSObject (value, name));
+		}
+
+		/// <summary>
+		/// The id of the current RUM session, or <see langword="null"/> if there is none.
+		/// </summary>
+		/// <remarks>
+		/// The bound member answers through a completion block, which is awkward to await by hand.
+		/// <c>RunContinuationsAsynchronously</c> because the block arrives on the SDK's own queue,
+		/// and a synchronous continuation would run the caller's await-resumption there too.
+		/// </remarks>
+		public Task<string?> GetCurrentSessionIdAsync ()
+		{
+			var completion = new TaskCompletionSource<string?> (TaskCreationOptions.RunContinuationsAsynchronously);
+
+			CurrentSessionIDWithCompletion (sessionId => completion.TrySetResult (sessionId?.ToString ()));
+
+			return completion.Task;
 		}
 	}
 

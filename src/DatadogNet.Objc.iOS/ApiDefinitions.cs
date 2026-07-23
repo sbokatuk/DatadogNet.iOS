@@ -6,6 +6,22 @@ using UIKit;
 
 namespace DatadogObjc
 {
+	// Forward declarations for the three OpenTracing protocols.
+	//
+	// The generator emits IOTTracer, IOTSpan and IOTSpanContext for the [Protocol] declarations
+	// further down, and every member below is typed against those rather than against the bare
+	// protocol names - see the note above OTTracer for why that distinction is load-bearing. But
+	// this file is also compiled on its own before the generator runs, and at that point the
+	// interfaces do not exist yet, so it needs these empty declarations to build.
+	//
+	// They are the standard binding idiom for protocol references and produce nothing themselves:
+	// an interface with no attributes and no members is ignored by the generator.
+	interface IOTTracer { }
+
+	interface IOTSpan { }
+
+	interface IOTSpanContext { }
+
 	// @interface DDB3HTTPHeadersWriter : NSObject
 	[BaseType (typeof(NSObject), Name = "_TtC11DatadogObjc21DDB3HTTPHeadersWriter")]
 	[DisableDefaultCtor]
@@ -5641,39 +5657,58 @@ namespace DatadogObjc
   the generated interface. If consumers are not supposed to implement this
   protocol, then [Model] is redundant and will generate code that will never
   be used.
-*/[Protocol (Name = "_TtP11DatadogObjc8OTTracer_")]
-[BaseType(typeof(NSObject))]
+*/	// [BaseType] is deliberately absent from this protocol, and from IOTSpan and IOTSpanContext
+	// below. Objective Sharpie emits one for every protocol it sees, and for these three it is
+	// actively wrong.
+	//
+	// [Protocol] alone makes the generator emit an IOTTracer interface and use *that* in every
+	// member signature. [Protocol] together with [BaseType] makes it emit a standalone OTTracer
+	// *class* and use the class instead - so `DDTracer.shared`, declared as returning OTTracer,
+	// made the runtime try to construct that class around a native DDTracer:
+	//
+	//     InvalidCastException: Unable to cast object of type 'DatadogObjc.DDTracer'
+	//                           to type 'DatadogObjc.OTTracer'
+	//                        at DatadogObjc.DDTracer.get_Shared()
+	//
+	// DDTracer.shared is the only way to reach a tracer, so this made the whole of 2.x tracing
+	// unreachable from C#. It is invisible at compile time - OTTracer is a perfectly good type and
+	// code against it builds cleanly - which is why it survived a release, and why the fix belongs
+	// next to a note rather than in a commit message.
+	//
+	// Nothing else changes: types that adopt the protocol still say `interface DDTracer : OTTracer`,
+	// and the generator resolves that to IOTTracer for them too.
+[Protocol (Name = "_TtP11DatadogObjc8OTTracer_")]
 	partial interface OTTracer
 	{
 		// @required -(id<OTSpan> _Nonnull)startSpan:(NSString * _Nonnull)operationName __attribute__((warn_unused_result("")));
 		[Abstract]
 		[Export ("startSpan:")]
-		OTSpan StartSpan (string operationName);
+		IOTSpan StartSpan (string operationName);
 
 		// @required -(id<OTSpan> _Nonnull)startSpan:(NSString * _Nonnull)operationName tags:(NSDictionary * _Nullable)tags __attribute__((warn_unused_result("")));
 		[Abstract]
 		[Export ("startSpan:tags:")]
-		OTSpan StartSpan (string operationName, [NullAllowed] NSDictionary tags);
+		IOTSpan StartSpan (string operationName, [NullAllowed] NSDictionary tags);
 
 		// @required -(id<OTSpan> _Nonnull)startSpan:(NSString * _Nonnull)operationName childOf:(id<OTSpanContext> _Nullable)parent __attribute__((warn_unused_result("")));
 		[Abstract]
 		[Export ("startSpan:childOf:")]
-		OTSpan StartSpan (string operationName, [NullAllowed] OTSpanContext parent);
+		IOTSpan StartSpan (string operationName, [NullAllowed] IOTSpanContext parent);
 
 		// @required -(id<OTSpan> _Nonnull)startSpan:(NSString * _Nonnull)operationName childOf:(id<OTSpanContext> _Nullable)parent tags:(NSDictionary * _Nullable)tags __attribute__((warn_unused_result("")));
 		[Abstract]
 		[Export ("startSpan:childOf:tags:")]
-		OTSpan StartSpan (string operationName, [NullAllowed] OTSpanContext parent, [NullAllowed] NSDictionary tags);
+		IOTSpan StartSpan (string operationName, [NullAllowed] IOTSpanContext parent, [NullAllowed] NSDictionary tags);
 
 		// @required -(id<OTSpan> _Nonnull)startSpan:(NSString * _Nonnull)operationName childOf:(id<OTSpanContext> _Nullable)parent tags:(NSDictionary * _Nullable)tags startTime:(NSDate * _Nullable)startTime __attribute__((warn_unused_result("")));
 		[Abstract]
 		[Export ("startSpan:childOf:tags:startTime:")]
-		OTSpan StartSpan (string operationName, [NullAllowed] OTSpanContext parent, [NullAllowed] NSDictionary tags, [NullAllowed] NSDate startTime);
+		IOTSpan StartSpan (string operationName, [NullAllowed] IOTSpanContext parent, [NullAllowed] NSDictionary tags, [NullAllowed] NSDate startTime);
 
 		// @required -(BOOL)inject:(id<OTSpanContext> _Nonnull)spanContext format:(NSString * _Nonnull)format carrier:(id _Nonnull)carrier error:(NSError * _Nullable * _Nullable)error;
 		[Abstract]
 		[Export ("inject:format:carrier:error:")]
-		bool Inject (OTSpanContext spanContext, string format, NSObject carrier, [NullAllowed] out NSError error);
+		bool Inject (IOTSpanContext spanContext, string format, NSObject carrier, [NullAllowed] out NSError error);
 
 		// @required -(BOOL)extractWithFormat:(NSString * _Nonnull)format carrier:(id _Nonnull)carrier error:(NSError * _Nullable * _Nullable)error;
 		[Abstract]
@@ -5689,31 +5724,31 @@ namespace DatadogObjc
 		// +(id<OTTracer> _Nonnull)shared __attribute__((warn_unused_result("")));
 		[Static]
 		[Export ("shared")]
-		OTTracer Shared { get; }
+		IOTTracer Shared { get; }
 
 		// -(id<OTSpan> _Nonnull)startSpan:(NSString * _Nonnull)operationName __attribute__((warn_unused_result("")));
 		[Export ("startSpan:")]
-		OTSpan StartSpan (string operationName);
+		IOTSpan StartSpan (string operationName);
 
 		// -(id<OTSpan> _Nonnull)startSpan:(NSString * _Nonnull)operationName tags:(NSDictionary * _Nullable)tags __attribute__((warn_unused_result("")));
 		[Export ("startSpan:tags:")]
-		OTSpan StartSpan (string operationName, [NullAllowed] NSDictionary tags);
+		IOTSpan StartSpan (string operationName, [NullAllowed] NSDictionary tags);
 
 		// -(id<OTSpan> _Nonnull)startSpan:(NSString * _Nonnull)operationName childOf:(id<OTSpanContext> _Nullable)parent __attribute__((warn_unused_result("")));
 		[Export ("startSpan:childOf:")]
-		OTSpan StartSpan (string operationName, [NullAllowed] OTSpanContext parent);
+		IOTSpan StartSpan (string operationName, [NullAllowed] IOTSpanContext parent);
 
 		// -(id<OTSpan> _Nonnull)startSpan:(NSString * _Nonnull)operationName childOf:(id<OTSpanContext> _Nullable)parent tags:(NSDictionary * _Nullable)tags __attribute__((warn_unused_result("")));
 		[Export ("startSpan:childOf:tags:")]
-		OTSpan StartSpan (string operationName, [NullAllowed] OTSpanContext parent, [NullAllowed] NSDictionary tags);
+		IOTSpan StartSpan (string operationName, [NullAllowed] IOTSpanContext parent, [NullAllowed] NSDictionary tags);
 
 		// -(id<OTSpan> _Nonnull)startSpan:(NSString * _Nonnull)operationName childOf:(id<OTSpanContext> _Nullable)parent tags:(NSDictionary * _Nullable)tags startTime:(NSDate * _Nullable)startTime __attribute__((warn_unused_result("")));
 		[Export ("startSpan:childOf:tags:startTime:")]
-		OTSpan StartSpan (string operationName, [NullAllowed] OTSpanContext parent, [NullAllowed] NSDictionary tags, [NullAllowed] NSDate startTime);
+		IOTSpan StartSpan (string operationName, [NullAllowed] IOTSpanContext parent, [NullAllowed] NSDictionary tags, [NullAllowed] NSDate startTime);
 
 		// -(BOOL)inject:(id<OTSpanContext> _Nonnull)spanContext format:(NSString * _Nonnull)format carrier:(id _Nonnull)carrier error:(NSError * _Nullable * _Nullable)error;
 		[Export ("inject:format:carrier:error:")]
-		bool Inject (OTSpanContext spanContext, string format, NSObject carrier, [NullAllowed] out NSError error);
+		bool Inject (IOTSpanContext spanContext, string format, NSObject carrier, [NullAllowed] out NSError error);
 
 		// -(BOOL)extractWithFormat:(NSString * _Nonnull)format carrier:(id _Nonnull)carrier error:(NSError * _Nullable * _Nullable)error;
 		[Export ("extractWithFormat:carrier:error:")]
@@ -5880,18 +5915,17 @@ namespace DatadogObjc
   protocol, then [Model] is redundant and will generate code that will never
   be used.
 */[Protocol (Name = "_TtP11DatadogObjc6OTSpan_")]
-[BaseType(typeof(NSObject))]
 	interface OTSpan
 	{
 		// @required @property (readonly, nonatomic, strong) id<OTSpanContext> _Nonnull context;
 		[Abstract]
 		[Export ("context", ArgumentSemantic.Strong)]
-		OTSpanContext Context { get; }
+		IOTSpanContext Context { get; }
 
 		// @required @property (readonly, nonatomic, strong) id<OTTracer> _Nonnull tracer;
 		[Abstract]
 		[Export ("tracer", ArgumentSemantic.Strong)]
-		OTTracer Tracer { get; }
+		IOTTracer Tracer { get; }
 
 		// @required -(void)setOperationName:(NSString * _Nonnull)operationName;
 		[Abstract]
@@ -5926,7 +5960,7 @@ namespace DatadogObjc
 		// @required -(id<OTSpan> _Nonnull)setBaggageItem:(NSString * _Nonnull)key value:(NSString * _Nonnull)value __attribute__((warn_unused_result("")));
 		[Abstract]
 		[Export ("setBaggageItem:value:")]
-		OTSpan SetBaggageItem (string key, string value);
+		IOTSpan SetBaggageItem (string key, string value);
 
 		// @required -(NSString * _Nullable)getBaggageItem:(NSString * _Nonnull)key __attribute__((warn_unused_result("")));
 		[Abstract]
@@ -5957,7 +5991,7 @@ namespace DatadogObjc
 		// @required -(id<OTSpan> _Nonnull)setActive;
 		[Abstract]
 		[Export ("setActive")]
-		OTSpan SetActive { get; }
+		IOTSpan SetActive { get; }
 	}
 
 	// @protocol OTSpanContext
@@ -5970,7 +6004,6 @@ namespace DatadogObjc
   protocol, then [Model] is redundant and will generate code that will never
   be used.
 */[Protocol (Name = "_TtP11DatadogObjc13OTSpanContext_")]
-[BaseType(typeof(NSObject))]
 	partial interface OTSpanContext
 	{
 		// @required -(void)forEachBaggageItem:(BOOL (^ _Nonnull)(NSString * _Nonnull, NSString * _Nonnull))callback;
