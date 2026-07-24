@@ -77,6 +77,20 @@
       something fixable in the binding definitions.
     -->
     <NoWarn>$(NoWarn);CS1591;CS0108;CS0109</NoWarn>
+
+    <!--
+      Trim and AOT analysis, permanently on. The Additions layer is ordinary managed code that
+      could acquire a reflection dependency without anyone noticing; with the analyzers on, an
+      unsafe pattern surfaces at build time. The generated tier analyses clean too - measured
+      before this was enabled, not assumed.
+
+      IsTrimmable is deliberately NOT set. It would opt these assemblies into consumer-side
+      trimming under partial trim modes - a behaviour change for every app - and the device tests
+      do not exercise trimmed builds. The iOS linker's Objective-C-aware steps already treat
+      binding assemblies correctly without it.
+    -->
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
   </PropertyGroup>
 
   <!-- Packaging -->

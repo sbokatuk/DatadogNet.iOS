@@ -91,14 +91,20 @@ and adds `Logs`, `Trace`, `SessionReplay`, `CrashReporting` or `WebViewTracking`
 **Minimum deployment target**: iOS **12.2** — the Datadog frameworks are Swift and use the
 OS-provided Swift runtime, ABI-stable from 12.2.
 
+> **net8 sunset.** The net8 head is already past its platform support window — the net8 mobile
+> workloads left support with MAUI 8 on 14 May 2025 — and ships for the apps that still target it,
+> with the simulator checks run against it so what works is verified rather than assumed. So the
+> decision does not persist by inertia: **the net8 head is dropped in the first release after
+> .NET 8 itself leaves support on 10 November 2026.**
+
 ---
 
 ## Installing
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.1" />
-  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.1" />
+  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.2" />
+  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.2" />
 </ItemGroup>
 ```
 
@@ -107,8 +113,8 @@ restore them:
 
 ```xml
 <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
-  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.1" />
-  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.1" />
+  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.2" />
+  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.2" />
 </ItemGroup>
 ```
 
@@ -316,6 +322,14 @@ Attribute values may be strings, any numeric type, `bool`, `DateTime`, `DateTime
 enums, `NSObject`s, arrays, and nested dictionaries. Anything else throws `ArgumentException` rather
 than being silently dropped. `DatadogAttributes` lives in `DatadogCore`.
 
+The convenience layer is fully documented, and the **main entry types of the generated tier carry
+summaries too** — `DDDatadog`, `DDConfiguration`, `DDSite`, `DDTrackingConsent`, the `Enable`/
+configuration types of every module, `DDRUMMonitor`, `DDLogger`, `DDTracer` and the header
+writers — written in `ApiDefinitions.cs`, which the binding generator carries through to the
+package's XML docs. The long tail of generated members (the 377 RUM model types, mostly) has no
+upstream docs to import and stays bare; the C# names map 1:1 onto the Objective-C ones, so
+upstream's reference covers them.
+
 ### Trace ids
 
 `GetTraceId` returns **32 lowercase hexadecimal characters** and `GetSpanId` returns **decimal**.
@@ -469,7 +483,7 @@ dotnet test tests/DatadogNet.iOS.PackageTests
 Run the on-simulator smoke tests against the packed packages:
 
 ```bash
-./.github/scripts/run-simulator-tests.sh 3.14.0.1 net9.0-ios18.0
+./.github/scripts/run-simulator-tests.sh 3.14.0.2 net9.0-ios18.0
 ```
 
 Build and run the sample:
@@ -498,9 +512,12 @@ dotnet build samples/DatadogNet.iOS.Example/DatadogNetExample.csproj -p:RuntimeI
 2. Bump `DatadogNativeVersion` in [`Directory.Build.props`](Directory.Build.props) and reset
    `DatadogBindingRevision` to `1`.
 3. `./build/FetchXcFrameworks.sh`
-4. `./build/GenerateBindings.sh` — writes to `Binding/`, **not** over the committed sources. Diff
-   and port real changes across; the script's header lists the fixes the committed files carry that
-   regenerating would otherwise undo.
+4. `./build/DiffSwiftHeaders.sh <version>` — writes one `build/<Framework>.Swift.h.diff` per
+   framework whose generated header changed, which is the porting work list;
+   [`docs/regenerating-bindings.md`](docs/regenerating-bindings.md) explains how to read one.
+   (`./build/GenerateBindings.sh` is the automated alternative for when Objective Sharpie works
+   again — it writes to `Binding/`, **not** over the committed sources, and its header lists the
+   fixes the committed files carry that regenerating would otherwise undo.)
 5. `./build/BuildNugets.sh` and run both test suites.
 6. Update the `dd-sdk-ios` badge at the top of this file — both its label and its release link.
    It is hardcoded, so nothing else will notice when it goes stale.
@@ -512,13 +529,14 @@ dropping a package — update the `FRAMEWORKS` list, add or remove the binding p
 > **Note.** Objective Sharpie 3.5.116 cannot currently generate these bindings — its bundled clang
 > fails on recent iOS SDK module maps. The committed sources were produced by parsing the shipped
 > `-Swift.h` headers directly; `GenerateBindings.sh` documents the problem and honours a `SHARPIE`
-> override for when it is fixed.
+> override for when it is fixed. Until then the header diff **is** the upgrade path — see
+> [`docs/regenerating-bindings.md`](docs/regenerating-bindings.md).
 
 ---
 
 ## Releasing
 
-Tag it. `v3.14.0.1` builds, tests, publishes every package to nuget.org via trusted publishing, and
+Tag it. `v3.14.0.2` builds, tests, publishes every package to nuget.org via trusted publishing, and
 creates a GitHub release. The tag drives which native SDK is bound, so an older line can be released
 by tagging it.
 
@@ -542,6 +560,13 @@ alongside Crash Reporting, and dSYMs uploaded for symbolication.
 
 **`This version of .NET for iOS requires Xcode 26.0`.** Only affects `net10.0-ios26.0`. See
 [Building locally](#building-locally).
+
+**`ArgumentNullException` passing `null` attributes to `logger.Info(message, attributes)`** — or
+any other level. Faithful to upstream: the Objective-C projection declares the dictionary (and the
+`NSError`) `_Nonnull`, and the Swift implementation takes a non-optional `[String: Any]`, so a
+binding that allowed `null` through would crash natively in the bridging thunk instead. Use the
+message-only overload, or the convenience `logger.Log(level, message, exception?, attributes?)`,
+which accepts `null` for both.
 
 **A framework fails to load at runtime.** Usually a partially restored package. Clear the cached
 copies and restore again: `rm -rf ~/.nuget/packages/datadognet.*`.
