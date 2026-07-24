@@ -16,7 +16,7 @@
       impossible to tell which Datadog release a given CrashReporter package belonged to.
     -->
     <DatadogNativeVersion>3.14.0</DatadogNativeVersion>
-    <DatadogBindingRevision>2</DatadogBindingRevision>
+    <DatadogBindingRevision>3</DatadogBindingRevision>
     <VersionPrefix>$(DatadogNativeVersion).$(DatadogBindingRevision)</VersionPrefix>
 
     <Authors>s.bokatuk</Authors>
@@ -41,6 +41,18 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <ContinuousIntegrationBuild Condition=" '$(GITHUB_ACTIONS)' == 'true' ">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!--
+    Surface the curated release notes on nuget.org. docs/release-notes/<version>.md already feeds
+    the GitHub release; packing it here is what makes it reach the .nupkg, so nuget.org stops
+    showing empty release notes. A version with no curated file - a PR prerelease of unreleased
+    work, typically - falls back to the releases page rather than shipping nothing.
+  -->
+  <PropertyGroup>
+    <DatadogReleaseNotesFile>$(MSBuildThisFileDirectory)docs/release-notes/$(VersionPrefix).md</DatadogReleaseNotesFile>
+    <PackageReleaseNotes Condition=" Exists('$(DatadogReleaseNotesFile)') ">$([System.IO.File]::ReadAllText('$(DatadogReleaseNotesFile)'))</PackageReleaseNotes>
+    <PackageReleaseNotes Condition=" '$(PackageReleaseNotes)' == '' ">https://github.com/sbokatuk/DatadogNet.iOS/releases/tag/v$(VersionPrefix)</PackageReleaseNotes>
   </PropertyGroup>
 
 </Project>

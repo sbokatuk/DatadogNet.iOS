@@ -64,6 +64,7 @@
 		<PackageReference Include="DatadogNet.Logs.iOS" Version="$(DatadogPackageVersion)" />
 		<PackageReference Include="DatadogNet.Trace.iOS" Version="$(DatadogPackageVersion)" />
 		<PackageReference Include="DatadogNet.SessionReplay.iOS" Version="$(DatadogPackageVersion)" />
+		<PackageReference Include="DatadogNet.WebViewTracking.iOS" Version="$(DatadogPackageVersion)" />
 		<PackageReference Include="DatadogNet.CrashReporting.iOS" Version="$(DatadogPackageVersion)" />
 	</ItemGroup>
 

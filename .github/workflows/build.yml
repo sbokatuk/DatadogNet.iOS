@@ -1,6 +1,6 @@
 name: build
 
-# Reusable pipeline: packs all eleven Datadog binding packages at a given version, validates the
+# Reusable pipeline: packs all twelve Datadog binding packages at a given version, validates the
 # packed packages, builds the sample against them, runs the simulator smoke tests, and uploads the
 # packages as an artifact. Callers (pr.yml, release.yml) decide the version and what to do with the
 # result.
@@ -44,6 +44,9 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check README versions
+        run: ./build/CheckReadmeVersions.sh
 
       - name: Select Xcode
         uses: ./.github/actions/select-xcode
