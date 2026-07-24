@@ -103,8 +103,8 @@ OS-provided Swift runtime, ABI-stable from 12.2.
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.2" />
-  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.2" />
+  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.3" />
+  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.3" />
 </ItemGroup>
 ```
 
@@ -113,8 +113,8 @@ restore them:
 
 ```xml
 <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
-  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.2" />
-  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.2" />
+  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.3" />
+  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.3" />
 </ItemGroup>
 ```
 
@@ -483,7 +483,7 @@ dotnet test tests/DatadogNet.iOS.PackageTests
 Run the on-simulator smoke tests against the packed packages:
 
 ```bash
-./.github/scripts/run-simulator-tests.sh 3.14.0.2 net9.0-ios18.0
+./.github/scripts/run-simulator-tests.sh 3.14.0.3 net9.0-ios18.0
 ```
 
 Build and run the sample:
@@ -536,7 +536,7 @@ dropping a package — update the `FRAMEWORKS` list, add or remove the binding p
 
 ## Releasing
 
-Tag it. `v3.14.0.2` builds, tests, publishes every package to nuget.org via trusted publishing, and
+Tag it. `v3.14.0.3` builds, tests, publishes every package to nuget.org via trusted publishing, and
 creates a GitHub release. The tag drives which native SDK is bound, so an older line can be released
 by tagging it.
 
