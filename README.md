@@ -270,6 +270,21 @@ overrides.TextAndInputPrivacy = DDTextAndInputPrivacyLevelOverride.MaskAll;
 overrides.Hide = new NSNumber(true);
 ```
 
+### WebView tracking
+
+```csharp
+using DatadogWebViewTracking;
+using Foundation;
+
+DDWebViewTracking.EnableWithWebView(
+    webView, new NSSet<NSString>(new NSString("example.com")), logsSampleRate: 100);
+// ...and when the web view goes away - the bridge holds a reference to it:
+DDWebViewTracking.DisableWithWebView(webView);
+```
+
+The page inside must run the Datadog Browser SDK, and its host must be on the allowlist —
+which is an allowlist because the bridge lets page JavaScript write into your RUM session.
+
 ### Crash reporting
 
 Add `DatadogNet.CrashReporting.iOS`, then enable it **after** initializing the SDK:
