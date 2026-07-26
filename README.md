@@ -564,6 +564,12 @@ Tag it. `v3.14.0.3` builds, tests, publishes every package to nuget.org via trus
 creates a GitHub release. The tag drives which native SDK is bound, so an older line can be released
 by tagging it.
 
+The tag must agree with `Directory.Build.props`: pushing `v3.15.0.1` while `DatadogNativeVersion`
+still says `3.14.0` — or a fourth component that is not `DatadogBindingRevision` — fails the
+workflow before anything builds, since it would publish packages whose version does not describe
+their contents. For a deliberate different-line release, set the `RELEASE_ALLOW_VERSION_MISMATCH`
+repository variable to `true` for that release, and unset it afterwards.
+
 Pull requests publish a `-beta.<pr>.<run>` prerelease of the whole set.
 
 Curated notes in `docs/release-notes/<version>.md` replace the generated commit list when present.
