@@ -103,8 +103,8 @@ OS-provided Swift runtime, ABI-stable from 12.2.
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.3" />
-  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.3" />
+  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.4" />
+  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.4" />
 </ItemGroup>
 ```
 
@@ -113,8 +113,8 @@ restore them:
 
 ```xml
 <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
-  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.3" />
-  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.3" />
+  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.4" />
+  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.4" />
 </ItemGroup>
 ```
 
@@ -502,7 +502,7 @@ dotnet test tests/DatadogNet.iOS.PackageTests
 Run the on-simulator smoke tests against the packed packages:
 
 ```bash
-./.github/scripts/run-simulator-tests.sh 3.14.0.3 net9.0-ios18.0
+./.github/scripts/run-simulator-tests.sh 3.14.0.4 net9.0-ios18.0
 ```
 
 Build and run the sample:
