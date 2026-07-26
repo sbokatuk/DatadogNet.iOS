@@ -1,0 +1,66 @@
+name: upstream watch
+
+# Opens an issue when Datadog publishes a dd-sdk-ios release newer than the one these bindings
+# are built against, so an upgrade starts as a tracked task rather than a discovery. Weekly is
+# plenty for an SDK that releases every few weeks; workflow_dispatch is for checking on demand.
+
+on:
+  schedule:
+    - cron: '30 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    name: compare against the latest dd-sdk-ios release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Open an issue if upstream is ahead
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current=$(sed -n 's:.*<DatadogNativeVersion>\(.*\)</DatadogNativeVersion>.*:\1:p' Directory.Build.props | head -1)
+          if [ -z "${current}" ]; then
+            echo "::error::could not read DatadogNativeVersion from Directory.Build.props"
+            exit 1
+          fi
+
+          # Upstream tags releases with the bare version - no v prefix.
+          latest=$(gh api repos/DataDog/dd-sdk-ios/releases/latest --jq .tag_name)
+          echo "bound: ${current}, upstream latest: ${latest}" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${latest}" = "${current}" ]; then
+            echo "Up to date." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # sort -V puts the newer of the two last. This also covers upstream being *behind* -
+          # a yanked or re-cut latest release - which is not an upgrade prompt.
+          if [ "$(printf '%s\n%s\n' "${current}" "${latest}" | sort -V | tail -1)" != "${latest}" ]; then
+            echo "Upstream ${latest} is not newer than ${current}; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # One open issue per upstream version, however many Mondays it stays open. Matched on
+          # the exact title rather than a search expression, which matches loosely.
+          title="dd-sdk-ios ${latest} is available"
+          if gh issue list --state open --limit 100 --json title --jq '.[].title' | grep -Fxq "${title}"; then
+            echo "An open issue for ${latest} already exists; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          cat > "${RUNNER_TEMP}/issue-body.md" <<BODY
+          Datadog published [dd-sdk-ios ${latest}](https://github.com/DataDog/dd-sdk-ios/releases/tag/${latest}); these bindings are built against \`${current}\`.
+
+          The ritual is the [Upgrading the Datadog SDK](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/README.md#upgrading-the-datadog-sdk) section of the README. \`./build/BumpNativeVersion.sh ${latest}\` does the mechanical part, including re-pinning \`build/checksums.txt\` from the release digest via \`build/UpdateChecksums.sh\`; the porting work list then comes from \`./build/DiffSwiftHeaders.sh ${latest}\`.
+
+          Opened automatically by the upstream-watch workflow.
+          BODY
+
+          gh issue create --title "${title}" --body-file "${RUNNER_TEMP}/issue-body.md"
+          echo "Opened an issue for ${latest}." >> "$GITHUB_STEP_SUMMARY"
