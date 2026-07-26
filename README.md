@@ -520,31 +520,32 @@ dotnet build samples/DatadogNet.iOS.Example/DatadogNetExample.csproj -p:RuntimeI
 
 ## Upgrading the Datadog SDK
 
-1. Pin the new archive's hash in
-   [`build/checksums.txt`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/build/checksums.txt) —
-   recorded from the digest GitHub publishes for the release asset, and verified against a fresh
-   download of the same bytes:
-
-   ```bash
-   ./build/UpdateChecksums.sh 3.15.0
-   ```
-
-2. Bump `DatadogNativeVersion` in
+1. `./build/BumpNativeVersion.sh 3.15.0` does the mechanical part: bumps `DatadogNativeVersion`
+   in
    [`Directory.Build.props`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/Directory.Build.props)
-   and reset `DatadogBindingRevision` to `1`.
-3. `./build/FetchXcFrameworks.sh`
-4. `./build/DiffSwiftHeaders.sh <version>` — writes one `build/<Framework>.Swift.h.diff` per
-   framework whose generated header changed, which is the porting work list;
+   and resets `DatadogBindingRevision` to `1`; pins the new archive's hash in
+   [`build/checksums.txt`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/build/checksums.txt)
+   from the digest GitHub publishes for the release asset, verified against a fresh download of
+   the same bytes (`build/UpdateChecksums.sh`); points `PackageValidationBaselineVersion` at the
+   version being left behind; rewrites this README's badge, prose and install snippets; and
+   scaffolds `docs/release-notes/3.15.0.1.md`.
+2. `./build/DiffSwiftHeaders.sh 3.15.0` — before fetching, while `libs/` still holds the previous
+   release — writes one `build/<Framework>.Swift.h.diff` per framework whose generated header
+   changed, which is the porting work list;
    [`docs/regenerating-bindings.md`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/docs/regenerating-bindings.md)
    explains how to read one.
    (`./build/GenerateBindings.sh` is the automated alternative for when Objective Sharpie works
    again — it writes to `Binding/`, **not** over the committed sources, and its header lists the
    fixes the committed files carry that regenerating would otherwise undo.)
+3. `./build/FetchXcFrameworks.sh` — replaces `libs/` with the new release's frameworks.
+4. Port the diffs into the committed `ApiDefinitions.cs` files.
 5. `./build/BuildNugets.sh` and run both test suites.
-6. Update the `dd-sdk-ios` badge at the top of this file — both its label and its release link —
-   and the "Built against" line under the install snippet. `build/CheckReadmeVersions.sh` verifies
-   them against `DatadogNativeVersion` in CI, so leaving them stale fails the build rather than
-   shipping.
+6. Finish the scaffolded release notes — its TODOs mark what cannot be generated — then tag (see
+   [Releasing](#releasing)).
+
+`build/CheckReadmeVersions.sh` verifies the badge, the "Built against" prose and the install
+snippets against `Directory.Build.props` — the bump script runs it last, and CI runs it on every
+build, so a stale spot fails loudly rather than shipping.
 
 If Datadog adds or removes a framework, `FetchXcFrameworks.sh` fails loudly rather than silently
 dropping a package — update the `FRAMEWORKS` list, add or remove the binding project, and update
