@@ -11,9 +11,9 @@ set -eu
 #   ./DiffSwiftHeaders.sh 3.15.0          # download that release, diff against libs/
 #   ./DiffSwiftHeaders.sh DIR_OLD DIR_NEW # diff two directories of *.xcframework
 #
-# The download mode also prints the archive's SHA-256, which is the value step 1 of the upgrade
-# guide records in build/checksums.txt - so the hash is captured from the same bytes the diff
-# was read from.
+# The download mode also prints the archive's SHA-256 so it can be compared against the pin
+# UpdateChecksums.sh records in build/checksums.txt from GitHub's own asset digest - a third
+# reading of the same bytes, independent of both the API and the pinning download.
 
 INVOKE_DIR="$(pwd)"
 cd "$(dirname "$0")"
@@ -47,11 +47,11 @@ elif [ "$#" -eq 1 ]; then
     trap 'rm -rf "$WORK"' EXIT
     zip="$WORK/Datadog.xcframework.zip"
 
-    echo "==> downloading dd-sdk-ios $version (no checksum pinned yet - that is what this run produces)"
+    echo "==> downloading dd-sdk-ios $version"
     curl -fSL -o "$zip" \
         "https://github.com/DataDog/dd-sdk-ios/releases/download/$version/Datadog.xcframework.zip"
 
-    echo "==> SHA-256 for build/checksums.txt:"
+    echo "==> SHA-256 of this download (must match the UpdateChecksums.sh pin in build/checksums.txt):"
     shasum -a 256 "$zip" | sed "s|$WORK/||"
 
     NEW_DIR="$WORK/extracted"

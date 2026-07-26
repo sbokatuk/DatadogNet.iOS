@@ -8,8 +8,8 @@ set -e
 # Run this after bumping DatadogNativeVersion and re-running FetchXcFrameworks.sh.
 #
 # Usage:
-#   ./GenerateBindings.sh              # every framework
-#   ./GenerateBindings.sh DatadogObjc  # just one
+#   ./GenerateBindings.sh             # every framework
+#   ./GenerateBindings.sh DatadogRUM  # just one
 #
 # Requires Objective Sharpie, which is not on nuget.org and has to be obtained separately:
 #

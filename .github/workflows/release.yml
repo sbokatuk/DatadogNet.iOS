@@ -46,6 +46,36 @@ jobs:
           echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
           echo "Releasing ${version} (prerelease=${prerelease})" >> "$GITHUB_STEP_SUMMARY"
 
+      # The tag names the dd-sdk-ios line to bind; Directory.Build.props names the line this
+      # branch is developed and tested against. When they disagree, the release would publish
+      # packages binding a native SDK the committed ApiDefinitions.cs were never ported to - or
+      # simply a mistyped tag - so it stops here, before anything builds. Fix the tag (delete and
+      # re-push) or bump the props. Releasing a different line on purpose - v2.30.2.3 from a main
+      # that has moved on to 3.x - is still possible: set the repository variable
+      # RELEASE_ALLOW_VERSION_MISMATCH to 'true' for that release, and unset it afterwards.
+      - name: Check the tag against Directory.Build.props
+        if: vars.RELEASE_ALLOW_VERSION_MISMATCH != 'true'
+        run: |
+          version="${{ steps.resolve.outputs.version }}"
+          native="${{ steps.resolve.outputs.native-version }}"
+          props_native=$(sed -n 's:.*<DatadogNativeVersion>\(.*\)</DatadogNativeVersion>.*:\1:p' Directory.Build.props | head -1)
+          props_revision=$(sed -n 's:.*<DatadogBindingRevision>\(.*\)</DatadogBindingRevision>.*:\1:p' Directory.Build.props | head -1)
+
+          if [ "${native}" != "${props_native}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} binds dd-sdk-ios ${native}, but Directory.Build.props has DatadogNativeVersion ${props_native}. Fix the tag or bump the props; for a deliberate different-line release, set the RELEASE_ALLOW_VERSION_MISMATCH repository variable to 'true'."
+            exit 1
+          fi
+
+          # The fourth component is this repository's binding revision. A tag may omit it, and a
+          # prerelease carries a suffix; both are stripped before comparing.
+          revision=$(printf '%s' "${version%%-*}" | cut -s -d. -f4)
+          if [ -n "${revision}" ] && [ "${revision}" != "${props_revision}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} is binding revision ${revision}, but Directory.Build.props has DatadogBindingRevision ${props_revision}. Fix the tag or bump the props; for a deliberate mismatch, set the RELEASE_ALLOW_VERSION_MISMATCH repository variable to 'true'."
+            exit 1
+          fi
+
+          echo "Tag agrees with Directory.Build.props (${props_native}, revision ${props_revision})" >> "$GITHUB_STEP_SUMMARY"
+
   build:
     name: build
     needs: version

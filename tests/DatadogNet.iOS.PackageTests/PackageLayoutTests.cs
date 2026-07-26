@@ -252,6 +252,13 @@ public class PackageLayoutTests
         {
             Assert.Contains("meta", Value("description"), StringComparison.OrdinalIgnoreCase);
         }
+
+        // Until 3.14.0.4 the RUM, Logs and Trace descriptions claimed the managed DD* API "lives
+        // in DatadogNet.Objc.iOS" - true of the 2.x packages, where DatadogObjc held every DD*
+        // type, but wrong since 3.0: each package binds its own surface, and DatadogNet.Objc.iOS
+        // is a dependency-only meta-package with no assembly at all. Sending a reader there for
+        // the API must not come back.
+        Assert.DoesNotContain("lives in DatadogNet.Objc.iOS", Value("description"), StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

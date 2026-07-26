@@ -109,6 +109,12 @@ jobs:
       - name: Validate packages
         run: dotnet test tests/DatadogNet.iOS.PackageTests --logger 'trx;LogFileName=package-tests.trx'
 
+      # After the merge, on the finished artifact - the per-pass intermediates legitimately lack
+      # the other band's frameworks, so validating them against the published baseline reports
+      # every band-to-band difference as a break. See the script header.
+      - name: Validate package API against the published baseline
+        run: ./build/ValidatePackageApi.sh
+
       - name: Upload packages
         uses: actions/upload-artifact@v4
         with:

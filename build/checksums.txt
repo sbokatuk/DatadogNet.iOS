@@ -1,19 +1,20 @@
 # SHA-256 of each dd-sdk-ios release's Datadog.xcframework.zip.
 #
-# Upstream publishes no checksum manifest of its own - unlike, say, the ffmpeg_kit_flutter
-# releases, which ship a checksums.json next to the archives. So the hash is pinned here, in the
-# repository, and FetchXcFrameworks.sh refuses to use an archive that does not match.
+# Upstream publishes no checksum manifest of its own, but the GitHub releases API reports
+# the digest it computed for every asset at upload time. build/UpdateChecksums.sh records
+# that digest here - after downloading the asset and requiring the bytes to hash to the
+# same value - so the pin is anchored to what GitHub stored, not to whatever one machine's
+# first download happened to contain. FetchXcFrameworks.sh refuses an archive that does
+# not match, and cross-checks the pin against the live digest when the API is reachable.
 #
 # That makes this file the trust anchor for ~116 MB of native code that gets linked into
-# consumers' apps: a substituted or truncated archive fails the fetch instead of being bound and
-# published. It also makes the build reproducible, since a GitHub release asset can be replaced
-# in place without the tag changing.
+# consumers' apps: a substituted or truncated archive fails the fetch instead of being
+# bound and published. It also makes the build reproducible, since a GitHub release asset
+# can be replaced in place without the tag changing.
 #
-# To add a version, download the asset and record its hash:
+# To add or re-pin a version:
 #
-#   v=2.18.0
-#   curl -fsSL -O "https://github.com/DataDog/dd-sdk-ios/releases/download/$v/Datadog.xcframework.zip"
-#   shasum -a 256 Datadog.xcframework.zip
+#   ./build/UpdateChecksums.sh 3.15.0
 #
 # Format: <dd-sdk-ios version> <sha256>
 
