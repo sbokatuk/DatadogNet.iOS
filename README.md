@@ -127,9 +127,11 @@ restore them:
 ## Usage
 
 The C# names are the Objective-C selectors projected into C#. Each feature is in its own namespace
-now — one `using` per module. [`samples/DatadogNet.iOS.Example`](samples/DatadogNet.iOS.Example) is
-a working MAUI app that does all of the below;
-[`Datadog.cs`](samples/DatadogNet.iOS.Example/Datadog.cs) is the setup in one file.
+now — one `using` per module.
+[`samples/DatadogNet.iOS.Example`](https://github.com/sbokatuk/DatadogNet.iOS/tree/main/samples/DatadogNet.iOS.Example)
+is a working MAUI app that does all of the below;
+[`Datadog.cs`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/samples/DatadogNet.iOS.Example/Datadog.cs)
+is the setup in one file.
 
 ### Initialize
 
@@ -394,7 +396,8 @@ all, so there is nothing for a binding to bind:
 callable API. They exist so the SDK is mirrored and so a future projection needs no new package.
 
 There is a way around this — a hand-written Swift `@objc` wrapper, which we can compile ourselves —
-and a working prototype for Flags lives in [`shims/DatadogFlagsObjc/`](shims/DatadogFlagsObjc/).
+and a working prototype for Flags lives in
+[`shims/DatadogFlagsObjc/`](https://github.com/sbokatuk/DatadogNet.iOS/tree/main/shims/DatadogFlagsObjc).
 Nothing ships yet.
 
 ---
@@ -453,13 +456,14 @@ DataDog/dd-sdk-ios release  ──►  Datadog.xcframework.zip  (one archive, el
 
 There is no Carthage step and nothing is compiled from source. Datadog publishes the built
 xcframeworks as a release asset, so the build downloads one archive, verifies it against a hash
-pinned in [`build/checksums.txt`](build/checksums.txt), and strips it to the two iOS slices.
+pinned in [`build/checksums.txt`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/build/checksums.txt),
+and strips it to the two iOS slices.
 
 **Why the two-pass build.** Each .NET SDK's iOS workload supports the current target framework and
 the previous one — the .NET 9 band builds net8 + net9, the .NET 10 band builds net9 + net10. No
 single SDK builds all three, so `BuildNugets.sh` packs twice and
-[`merge-packages.py`](build/merge-packages.py) grafts the net10 assets and dependency groups into
-the net9 packages.
+[`merge-packages.py`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/build/merge-packages.py)
+grafts the net10 assets and dependency groups into the net9 packages.
 
 ### Layout
 
@@ -510,13 +514,14 @@ dotnet build samples/DatadogNet.iOS.Example/DatadogNetExample.csproj -p:RuntimeI
 > Building anything that targets `net10.0-ios26.0` needs Xcode **26.0** specifically — .NET for iOS
 > refuses any other version. If your default Xcode is newer, prefix the command:
 > `DEVELOPER_DIR=/Applications/Xcode_26.0.1.app/Contents/Developer ...`. CI handles this with the
-> [`select-xcode`](.github/actions/select-xcode/action.yml) action.
+> [`select-xcode`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/.github/actions/select-xcode/action.yml) action.
 
 ---
 
 ## Upgrading the Datadog SDK
 
-1. Record the new archive's hash in [`build/checksums.txt`](build/checksums.txt):
+1. Record the new archive's hash in
+   [`build/checksums.txt`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/build/checksums.txt):
 
    ```bash
    v=3.15.0
@@ -524,12 +529,14 @@ dotnet build samples/DatadogNet.iOS.Example/DatadogNetExample.csproj -p:RuntimeI
    shasum -a 256 Datadog.xcframework.zip
    ```
 
-2. Bump `DatadogNativeVersion` in [`Directory.Build.props`](Directory.Build.props) and reset
-   `DatadogBindingRevision` to `1`.
+2. Bump `DatadogNativeVersion` in
+   [`Directory.Build.props`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/Directory.Build.props)
+   and reset `DatadogBindingRevision` to `1`.
 3. `./build/FetchXcFrameworks.sh`
 4. `./build/DiffSwiftHeaders.sh <version>` — writes one `build/<Framework>.Swift.h.diff` per
    framework whose generated header changed, which is the porting work list;
-   [`docs/regenerating-bindings.md`](docs/regenerating-bindings.md) explains how to read one.
+   [`docs/regenerating-bindings.md`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/docs/regenerating-bindings.md)
+   explains how to read one.
    (`./build/GenerateBindings.sh` is the automated alternative for when Objective Sharpie works
    again — it writes to `Binding/`, **not** over the committed sources, and its header lists the
    fixes the committed files carry that regenerating would otherwise undo.)
@@ -545,7 +552,7 @@ dropping a package — update the `FRAMEWORKS` list, add or remove the binding p
 > fails on recent iOS SDK module maps. The committed sources were produced by parsing the shipped
 > `-Swift.h` headers directly; `GenerateBindings.sh` documents the problem and honours a `SHARPIE`
 > override for when it is fixed. Until then the header diff **is** the upgrade path — see
-> [`docs/regenerating-bindings.md`](docs/regenerating-bindings.md).
+> [`docs/regenerating-bindings.md`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/docs/regenerating-bindings.md).
 
 ---
 
@@ -590,7 +597,8 @@ copies and restore again: `rm -rf ~/.nuget/packages/datadognet.*`.
 
 ## Licence
 
-The binding code in this repository is [MIT](LICENSE). The native binaries the packages ship are
+The binding code in this repository is
+[MIT](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/LICENSE). The native binaries the packages ship are
 built and published by Datadog and are Apache-2.0 — which covers `dd-sdk-ios`, KSCrash and
 opentelemetry-swift alike. Every package declares `MIT AND Apache-2.0` and carries both texts under
 `licenses/`.
