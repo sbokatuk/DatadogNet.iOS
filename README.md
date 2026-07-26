@@ -520,13 +520,13 @@ dotnet build samples/DatadogNet.iOS.Example/DatadogNetExample.csproj -p:RuntimeI
 
 ## Upgrading the Datadog SDK
 
-1. Record the new archive's hash in
-   [`build/checksums.txt`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/build/checksums.txt):
+1. Pin the new archive's hash in
+   [`build/checksums.txt`](https://github.com/sbokatuk/DatadogNet.iOS/blob/main/build/checksums.txt) —
+   recorded from the digest GitHub publishes for the release asset, and verified against a fresh
+   download of the same bytes:
 
    ```bash
-   v=3.15.0
-   curl -fsSL -O "https://github.com/DataDog/dd-sdk-ios/releases/download/$v/Datadog.xcframework.zip"
-   shasum -a 256 Datadog.xcframework.zip
+   ./build/UpdateChecksums.sh 3.15.0
    ```
 
 2. Bump `DatadogNativeVersion` in

@@ -60,6 +60,43 @@ if [ -z "$expected" ]; then
     exit 1
 fi
 
+# Best-effort cross-check of the pin against the digest GitHub publishes for the asset, before
+# anything is downloaded. UpdateChecksums.sh derives the pin from this same digest, so a
+# disagreement means either the pin was recorded wrongly or the release asset was replaced in
+# place - both must stop the build. The API being unreachable (offline, rate-limited) must not:
+# the pinned hash still guards the actual download, so that case is a one-line note and the
+# fetch continues.
+published=$(curl -fsS --max-time 15 \
+    "https://api.github.com/repos/DataDog/dd-sdk-ios/releases/tags/$DATADOG_VERSION" 2>/dev/null \
+    | python3 -c '
+import json
+import sys
+
+try:
+    release = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(0)
+for asset in release.get("assets", []):
+    if asset.get("name") == "Datadog.xcframework.zip":
+        digest = asset.get("digest") or ""
+        if digest.startswith("sha256:"):
+            print(digest[len("sha256:"):].lower())
+        break
+' 2>/dev/null) || published=""
+if [ -n "$published" ]; then
+    if [ "$published" != "$expected" ]; then
+        echo "error: the pinned SHA-256 for $DATADOG_VERSION disagrees with the digest GitHub publishes" >&2
+        echo "  pinned    $expected  ($CHECKSUMS)" >&2
+        echo "  published $published  (releases API asset digest)" >&2
+        echo "  Either the pin was recorded wrongly - re-run ./build/UpdateChecksums.sh $DATADOG_VERSION -" >&2
+        echo "  or the release asset was replaced after it was pinned, which wants investigating upstream." >&2
+        exit 1
+    fi
+    echo "==> pin matches the digest GitHub publishes for $DATADOG_VERSION"
+else
+    echo "note: could not read the asset digest from the GitHub API - continuing with the pinned hash"
+fi
+
 sha256_of() {
     if command -v shasum >/dev/null 2>&1; then
         shasum -a 256 "$1" | cut -d' ' -f1
