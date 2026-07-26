@@ -541,8 +541,10 @@ dotnet build samples/DatadogNet.iOS.Example/DatadogNetExample.csproj -p:RuntimeI
    again — it writes to `Binding/`, **not** over the committed sources, and its header lists the
    fixes the committed files carry that regenerating would otherwise undo.)
 5. `./build/BuildNugets.sh` and run both test suites.
-6. Update the `dd-sdk-ios` badge at the top of this file — both its label and its release link.
-   It is hardcoded, so nothing else will notice when it goes stale.
+6. Update the `dd-sdk-ios` badge at the top of this file — both its label and its release link —
+   and the "Built against" line under the install snippet. `build/CheckReadmeVersions.sh` verifies
+   them against `DatadogNativeVersion` in CI, so leaving them stale fails the build rather than
+   shipping.
 
 If Datadog adds or removes a framework, `FetchXcFrameworks.sh` fails loudly rather than silently
 dropping a package — update the `FRAMEWORKS` list, add or remove the binding project, and update
