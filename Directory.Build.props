@@ -19,6 +19,15 @@
     <DatadogBindingRevision>3</DatadogBindingRevision>
     <VersionPrefix>$(DatadogNativeVersion).$(DatadogBindingRevision)</VersionPrefix>
 
+    <!--
+      The version most recently published to nuget.org, which is what the packed packages are
+      validated against when RunPackageValidation=true - see src/Datadog.Binding.props. Advances
+      at each release: to the version just shipped, as part of preparing the next one.
+      build/BumpNativeVersion.sh maintains it across a native bump; a binding-revision release
+      moves it by hand.
+    -->
+    <DatadogPackageValidationBaselineVersion>3.14.0.3</DatadogPackageValidationBaselineVersion>
+
     <Authors>s.bokatuk</Authors>
     <Company>s.bokatuk</Company>
     <Copyright>Copyright © s.bokatuk</Copyright>

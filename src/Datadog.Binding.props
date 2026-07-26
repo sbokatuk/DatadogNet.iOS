@@ -101,6 +101,23 @@
     <PackageTags>$(PackageTags);datadog;observability;SDK;MAUI;iOS;dotnet-ios;Binding</PackageTags>
   </PropertyGroup>
 
+  <!--
+    Package validation against the last published release, so an accidental API break - a
+    regenerated binding dropping a member, most plausibly - fails the pack instead of shipping.
+    Opt-in through RunPackageValidation=true because the baseline package is restored from
+    nuget.org, and a local offline pack must not depend on that; the CI pack job turns it on.
+
+    Only the net9 band runs it. That pass carries the net8+net9 assemblies, where a surface
+    change would happen; the net10-band pass alone packs a package that legitimately lacks the
+    net8/net9 assets the baseline ships - merge-packages.py reassembles the full set afterwards -
+    so validating that intermediate against the baseline would fail on the missing target
+    frameworks by design, not by defect.
+  -->
+  <PropertyGroup Condition=" '$(RunPackageValidation)' == 'true' and '$(DatadogSdkBand)' == 'net9' ">
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>$(DatadogPackageValidationBaselineVersion)</PackageValidationBaselineVersion>
+  </PropertyGroup>
+
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)../build/icon.png" Pack="true" PackagePath="/" Visible="false" />
     <None Include="$(MSBuildThisFileDirectory)../README.md" Pack="true" PackagePath="/" Visible="false" />

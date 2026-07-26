@@ -104,6 +104,12 @@ jobs:
         run: ./build/FetchXcFrameworks.sh "${{ steps.native.outputs.version }}"
 
       - name: Pack all packages
+        # RunPackageValidation reaches MSBuild as a property from the environment and switches on
+        # EnablePackageValidation against the baseline pinned in Directory.Build.props (see
+        # src/Datadog.Binding.props). CI has the network access the baseline restore needs, which
+        # is why local packs default to off.
+        env:
+          RunPackageValidation: 'true'
         run: ./build/BuildNugets.sh "${{ inputs.version }}" "${{ steps.native.outputs.version }}"
 
       - name: Validate packages
