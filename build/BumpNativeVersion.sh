@@ -124,8 +124,11 @@ cat <<REMAINING
      $old_native: writes one build/<Framework>.Swift.h.diff per framework whose generated
      header changed, which is the porting work list (docs/regenerating-bindings.md).
   2. ./build/FetchXcFrameworks.sh       - replaces libs/ with the $new frameworks.
-  3. Port the diffs into the committed ApiDefinitions.cs files.
-  4. ./build/BuildNugets.sh, then both test suites (PackageTests, simulator).
-  5. Finish docs/release-notes/$new_package.md - the TODOs mark what cannot be generated.
-  6. Commit, PR, and tag v$new_package once merged (see the README's Releasing section).
+  3. ./build/GenerateDeviceClassAliases.sh - regenerates build/device-class-aliases/ for the new
+     binaries; the Swift mangled names the aliases point at change with every native release,
+     and the PackageTests symbol audit fails on stale ones.
+  4. Port the diffs into the committed ApiDefinitions.cs files.
+  5. ./build/BuildNugets.sh, then both test suites (PackageTests, simulator).
+  6. Finish docs/release-notes/$new_package.md - the TODOs mark what cannot be generated.
+  7. Commit, PR, and tag v$new_package once merged (see the README's Releasing section).
 REMAINING

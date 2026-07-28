@@ -1,0 +1,1 @@
+-Wl,-alias,_$s20DatadogSessionReplay05objc_bC13ConfigurationCN,_OBJC_CLASS_$_DDSessionReplayConfiguration

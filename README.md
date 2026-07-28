@@ -103,8 +103,8 @@ OS-provided Swift runtime, ABI-stable from 12.2.
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.4" />
-  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.4" />
+  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.5" />
+  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.5" />
 </ItemGroup>
 ```
 
@@ -113,8 +113,8 @@ restore them:
 
 ```xml
 <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
-  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.4" />
-  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.4" />
+  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.5" />
+  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.5" />
 </ItemGroup>
 ```
 
@@ -502,7 +502,7 @@ dotnet test tests/DatadogNet.iOS.PackageTests
 Run the on-simulator smoke tests against the packed packages:
 
 ```bash
-./.github/scripts/run-simulator-tests.sh 3.14.0.4 net9.0-ios18.0
+./.github/scripts/run-simulator-tests.sh 3.14.0.5 net9.0-ios18.0
 ```
 
 Build and run the sample:
@@ -591,6 +591,13 @@ alongside Crash Reporting, and dSYMs uploaded for symbolication.
 
 **`This version of .NET for iOS requires Xcode 26.0`.** Only affects `net10.0-ios26.0`. See
 [Building locally](#building-locally).
+
+**`Undefined symbols for architecture arm64: "_OBJC_CLASS_$_DD…"` building for a real device.**
+Fixed in 3.14.0.5 — update every DatadogNet package to that version or later. The prebuilt
+dd-sdk-ios device slices ship without static Objective-C registration for 41 classes (their
+deployment target is below iOS 13), which broke every device link while simulator builds worked;
+the packages now repair it with generated linker aliases plus up-front class realization. See
+`docs/release-notes/3.14.0.5.md` and `build/device-class-aliases/README.md`.
 
 **`ArgumentNullException` passing `null` attributes to `logger.Info(message, attributes)`** — or
 any other level. Faithful to upstream: the Objective-C projection declares the dictionary (and the

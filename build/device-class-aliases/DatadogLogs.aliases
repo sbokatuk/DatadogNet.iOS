@@ -1,0 +1,1 @@
+-Wl,-alias,_$s11DatadogLogs13objc_LogEventCN,_OBJC_CLASS_$_DDLogEvent

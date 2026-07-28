@@ -1,0 +1,3 @@
+-Wl,-alias,_$s12DatadogTrace05objc_B13ConfigurationCN,_OBJC_CLASS_$_DDTraceConfiguration
+-Wl,-alias,_$s12DatadogTrace05objc_B22FirstPartyHostsTracingCN,_OBJC_CLASS_$_DDTraceFirstPartyHostsTracing
+-Wl,-alias,_$s12DatadogTrace05objc_B18URLSessionTrackingCN,_OBJC_CLASS_$_DDTraceURLSessionTracking
