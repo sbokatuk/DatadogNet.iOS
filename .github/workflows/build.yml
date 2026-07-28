@@ -8,6 +8,16 @@ name: build
 on:
   workflow_call:
     inputs:
+      verify:
+        description: >
+          Whether to run the verification jobs — package validation, the sample builds, the
+          Release link checks and the e2e suites. Pull requests leave it at true, and are the only
+          place any of this runs. Releases pass false: the tagged commit was already verified on
+          its pull request, so a tag packs and publishes and nothing more. The gate is the same
+          input, with the same name and the same meaning, in every repository.
+        required: false
+        default: true
+        type: boolean
       version:
         description: NuGet version to stamp on every package.
         required: true
@@ -107,12 +117,14 @@ jobs:
         run: ./build/BuildNugets.sh "${{ inputs.version }}" "${{ steps.native.outputs.version }}"
 
       - name: Validate packages
+        if: ${{ inputs.verify }}
         run: dotnet test tests/DatadogNet.iOS.PackageTests --logger 'trx;LogFileName=package-tests.trx'
 
       # After the merge, on the finished artifact - the per-pass intermediates legitimately lack
       # the other band's frameworks, so validating them against the published baseline reports
       # every band-to-band difference as a break. See the script header.
       - name: Validate package API against the published baseline
+        if: ${{ inputs.verify }}
         run: ./build/ValidatePackageApi.sh
 
       - name: Upload packages
@@ -126,7 +138,7 @@ jobs:
           retention-days: 7
 
       - name: Upload test results
-        if: always()
+        if: ${{ inputs.verify && (always()) }}
         uses: actions/upload-artifact@v4
         with:
           name: package-test-results
@@ -136,6 +148,7 @@ jobs:
 
   sample:
     name: build sample app
+    if: ${{ inputs.verify }}
     timeout-minutes: 30
     needs: pack
     runs-on: macos-15
@@ -172,8 +185,73 @@ jobs:
             -p:RuntimeIdentifier=iossimulator-arm64 \
             -p:DatadogPackageVersion="${{ inputs.version }}"
 
+  # The Debug sample above restores, resolves and links, but never runs the linker or the AOT
+  # compiler — and those are what a consumer actually ships. DatadogNet.Mac has carried a Release
+  # leg for exactly this reason, with the note that "the ILLink/AOT behaviour Release turns on has
+  # broken binding consumers that built fine in Debug"; this is the same check for iOS.
+  #
+  # Affordable here in a way it is not everywhere: the Datadog xcframeworks are small, unlike the
+  # WebRTC-sized payloads in AntMedia.Net and Red5Pro.Streaming.Net, whose build files record a
+  # measured 38-minute iOS Release build and are deliberately left in Debug.
+  link-release:
+    name: Release link check (device)
+    if: ${{ inputs.verify }}
+    timeout-minutes: 45
+    needs: pack
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Install MAUI workload
+        run: dotnet workload install maui-ios
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts
+
+      # Code signing off, because a public runner has neither a certificate nor a provisioning
+      # profile, and neither affects whether the thing links. That leaves the .app itself as the
+      # assertion: AOT and the native link both run before the bundle is assembled, so a failure
+      # in either never gets far enough to produce one.
+      - name: Link the sample for a real device
+        run: |
+          tfm=net9.0-ios18.0
+          dotnet build samples/DatadogNet.iOS.Example/DatadogNetExample.csproj \
+            --configuration Release \
+            --framework "${tfm}" \
+            -p:RuntimeIdentifier=ios-arm64 \
+            -p:EnableCodeSigning=false \
+            -p:DatadogPackageVersion="${{ inputs.version }}"
+
+          app="$(find "samples/DatadogNet.iOS.Example/bin/Release/${tfm}/ios-arm64" -maxdepth 1 -name '*.app' | head -1)"
+          if [ -z "${app}" ]; then
+            echo "::error::no .app under samples/DatadogNet.iOS.Example/bin/Release/${tfm}/ios-arm64 — the device build did not produce a bundle"
+            exit 1
+          fi
+
+          # Reported rather than asserted on a count: how many assemblies survive the linker is
+          # the linker's business and moves with every SDK update. Zero of them would mean the
+          # build produced a bundle without AOT compiling anything, which is worth failing on.
+          images="$(find "${app}" -name '*.aotdata.arm64' | wc -l | tr -d ' ')"
+          echo "==> ${app}: ${images} AOT images"
+          if [ "${images}" -eq 0 ]; then
+            echo "::error::no AOT images in ${app} — the device build did not AOT compile"
+            exit 1
+          fi
+
   e2e:
     name: simulator smoke test (${{ matrix.target-framework }})
+    if: ${{ inputs.verify }}
     timeout-minutes: 45
     needs: pack
     runs-on: macos-15
