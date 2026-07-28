@@ -132,6 +132,27 @@
     <Error Text="DatadogSdkBand must be 'net9' or 'net10', but was '$(DatadogSdkBand)'." />
   </Target>
 
+  <!--
+    dd-sdk-ios builds its prebuilt device slices with a 12.0 deployment target (the simulator
+    slices get 14.0, the arm64-simulator floor). Below iOS 13, Swift withholds the static
+    Objective-C registration - the _OBJC_CLASS_$_<Name> symbol and the __objc_classlist entry -
+    for @objc classes whose metadata needs runtime fix-ups, so 41 classes that every simulator
+    slice exports are missing from the device slices, and any app whose static registrar reaches
+    one fails its device link with "Undefined symbols". The class objects themselves are present
+    and exported under their Swift metadata names (_$s...CN), so each missing name is repaired
+    with one linker alias resolving the Objective-C spelling to the Swift export.
+
+    build/GenerateDeviceClassAliases.sh derives the pairs from the binaries and writes one file
+    per affected framework; the flags ride inside each binding assembly and apply to every
+    consuming app's link. On the simulator both names already point at the same address, so the
+    alias is a no-op there. When upstream fixes its release build the files disappear on
+    regeneration and this block stops emitting anything.
+  -->
+  <PropertyGroup>
+    <DatadogDeviceClassAliasesFile>$(MSBuildThisFileDirectory)../build/device-class-aliases/$(DatadogFramework).aliases</DatadogDeviceClassAliasesFile>
+    <DatadogDeviceClassAliasFlags Condition="Exists('$(DatadogDeviceClassAliasesFile)')">$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(DatadogDeviceClassAliasesFile)')), '\s+', ' ').Trim())</DatadogDeviceClassAliasFlags>
+  </PropertyGroup>
+
   <ItemGroup>
     <!--
       ForceLoad and SmartLink=False are carried over from the previous bindings, which shipped
@@ -142,6 +163,27 @@
     -->
     <NativeReference Include="$(DatadogXcFramework)">
       <Kind>Framework</Kind>
+      <ForceLoad>True</ForceLoad>
+      <SmartLink>False</SmartLink>
+      <LinkerFlags Condition=" '$(DatadogDeviceClassAliasFlags)' != '' ">$(DatadogDeviceClassAliasFlags)</LinkerFlags>
+    </NativeReference>
+  </ItemGroup>
+
+  <!--
+    The aliases make the missing classes *link*; realizing them before anything can message them
+    is the other half - a cold message to lazily-emitted Swift class metadata is a segfault, not
+    a slow path. And "anything" includes the static registrar itself: xamarin_create_classes,
+    called from main() before one line of managed code, does `[DDConfiguration class]` for every
+    mapped bound class - so nothing managed (a module initializer included) can run early
+    enough. All measured on hardware. <Framework>Realize.xcframework is a static library holding
+    a single dyld initializer that realizes each aliased class through its Swift metadata
+    accessor; dyld runs it after the Datadog dylibs are loaded and before main, which is exactly
+    the window. ForceLoad, because nothing references the archive - without it the linker would
+    drop the initializer and the app would be back to crashing at startup.
+  -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)../build/device-class-aliases/$(DatadogFramework)Realize.xcframework')">
+    <NativeReference Include="$(MSBuildThisFileDirectory)../build/device-class-aliases/$(DatadogFramework)Realize.xcframework">
+      <Kind>Static</Kind>
       <ForceLoad>True</ForceLoad>
       <SmartLink>False</SmartLink>
     </NativeReference>

@@ -16,7 +16,7 @@
       impossible to tell which Datadog release a given CrashReporter package belonged to.
     -->
     <DatadogNativeVersion>3.14.0</DatadogNativeVersion>
-    <DatadogBindingRevision>4</DatadogBindingRevision>
+    <DatadogBindingRevision>5</DatadogBindingRevision>
     <VersionPrefix>$(DatadogNativeVersion).$(DatadogBindingRevision)</VersionPrefix>
 
     <!--

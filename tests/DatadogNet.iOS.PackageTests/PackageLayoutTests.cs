@@ -105,10 +105,15 @@ public class PackageLayoutTests
             .Distinct()
             .ToList();
 
-        // One package, one framework. A package that shipped two would mean the shared libs/
-        // directory leaked into a NativeReference glob, and consumers would end up with the same
-        // framework embedded twice from two packages - a duplicate-symbol link failure.
-        Assert.Equal([$"{framework}.xcframework"], present);
+        // One package, one framework - plus, where the device slice is missing class symbols,
+        // this repository's own generated <Framework>Realize.xcframework companion (see
+        // build/device-class-aliases/README.md). A package shipping a *different* Datadog
+        // framework would mean the shared libs/ directory leaked into a NativeReference glob,
+        // and consumers would end up with the same framework embedded twice from two packages -
+        // a duplicate-symbol link failure.
+        Assert.Contains($"{framework}.xcframework", present);
+        Assert.All(present, entry => Assert.Contains(
+            entry, new[] { $"{framework}.xcframework", $"{framework}Realize.xcframework" }));
     }
 
     [Theory]

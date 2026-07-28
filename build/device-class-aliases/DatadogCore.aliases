@@ -1,0 +1,5 @@
+-Wl,-alias,_$s11DatadogCore18objc_ConfigurationCN,_OBJC_CLASS_$_DDConfiguration
+-Wl,-alias,_$s11DatadogCore05objc_A4SiteCN,_OBJC_CLASS_$_DDSite
+-Wl,-alias,_$s11DatadogCore20objc_TrackingConsentCN,_OBJC_CLASS_$_DDTrackingConsent
+-Wl,-alias,_$s11DatadogCore43objc_URLSessionInstrumentationConfigurationCN,_OBJC_CLASS_$_DDURLSessionInstrumentationConfiguration
+-Wl,-alias,_$s11DatadogCore52objc_URLSessionInstrumentationFirstPartyHostsTracingCN,_OBJC_CLASS_$_DDURLSessionInstrumentationFirstPartyHostsTracing

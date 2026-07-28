@@ -2,17 +2,22 @@
 
 	<PropertyGroup>
 		<!--
-		  Both target frameworks the .NET 9 SDK band can build, so the sample proves the packages
-		  resolve on each. net10.0-ios26.0 is deliberately left out: it needs the .NET 10 band,
-		  which would mean a second SDK and MAUI workload install to compile a sample that
-		  exercises exactly the same API. The device tests already run against net10.
+		  Which target frameworks build is selected the same way Datadog.Binding.props does it: the
+		  .NET 9 SDK band owns net8/net9 and the .NET 10 band owns net10, and no single SDK can
+		  build all three. The default stays the net9 band so a plain `dotnet build` under the
+		  repository's global.json keeps working; CI's device link check builds the net10 band too
+		  (-p:DatadogSdkBand=net10, run under a .NET 10 SDK), because the missing-device-symbol
+		  regression that motivated that job is invisible on the simulator and the newest band is
+		  what new consumers start on.
 
 		  The platform version is pinned to match the packages' lib/ folders. A bare net9.0-ios
 		  resolves to the iOS 26 reference pack, which refuses to build unless Xcode is exactly
 		  26.0 - an unnecessary constraint for a sample. A consuming app targeting a later platform
 		  version still resolves these assets, since 18.0 is compatible with them.
 		-->
-		<TargetFrameworks>net8.0-ios18.0;net9.0-ios18.0</TargetFrameworks>
+		<DatadogSdkBand Condition=" '$(DatadogSdkBand)' == '' ">net9</DatadogSdkBand>
+		<TargetFrameworks Condition=" '$(DatadogSdkBand)' == 'net9' ">net8.0-ios18.0;net9.0-ios18.0</TargetFrameworks>
+		<TargetFrameworks Condition=" '$(DatadogSdkBand)' == 'net10' ">net10.0-ios26.0</TargetFrameworks>
 
 		<OutputType>Exe</OutputType>
 		<RootNamespace>DatadogNetExample</RootNamespace>

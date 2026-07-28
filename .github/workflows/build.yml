@@ -194,11 +194,24 @@ jobs:
   # WebRTC-sized payloads in AntMedia.Net and Red5Pro.Streaming.Net, whose build files record a
   # measured 38-minute iOS Release build and are deliberately left in Debug.
   link-release:
-    name: Release link check (device)
+    name: Release link check (device, ${{ matrix.target-framework }})
     if: ${{ inputs.verify }}
     timeout-minutes: 45
     needs: pack
     runs-on: macos-15
+    strategy:
+      # Both extremes, like the e2e matrix: net9 comes out of the same pack pass as net8, and
+      # net10 is the band new consumers start on. Run per band because a device link failure can
+      # be band-specific - and because the regression this job exists for (dd-sdk-ios device
+      # slices missing _OBJC_CLASS_$_ exports) is invisible to every simulator job.
+      fail-fast: false
+      matrix:
+        target-framework: [net9.0-ios18.0, net10.0-ios26.0]
+        include:
+          - target-framework: net9.0-ios18.0
+            sdk-band: net9
+          - target-framework: net10.0-ios26.0
+            sdk-band: net10
     steps:
       - uses: actions/checkout@v4
 
@@ -208,10 +221,24 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: |
+            9.0.x
+            10.0.x
 
       - name: Install MAUI workload
-        run: dotnet workload install maui-ios
+        run: |
+          # The example is built for the band under test, so the workload must be installed for
+          # the SDK that owns it. global.json pins .NET 9; the net10 band needs .NET 10, which is
+          # steered the same way BuildNugets.sh does it - a scratch directory with its own
+          # global.json, since the SDK is resolved from the working directory.
+          if [ "${{ matrix.sdk-band }}" = "net10" ]; then
+            mkdir -p "${RUNNER_TEMP}/sdk10"
+            ( cd "${RUNNER_TEMP}/sdk10" \
+              && dotnet new globaljson --sdk-version "$(dotnet --list-sdks | grep '^10\.' | tail -1 | cut -d' ' -f1)" --force \
+              && dotnet workload install maui-ios )
+          else
+            dotnet workload install maui-ios
+          fi
 
       - name: Download packages
         uses: actions/download-artifact@v4
@@ -225,13 +252,18 @@ jobs:
       # in either never gets far enough to produce one.
       - name: Link the sample for a real device
         run: |
-          tfm=net9.0-ios18.0
-          dotnet build samples/DatadogNet.iOS.Example/DatadogNetExample.csproj \
+          tfm="${{ matrix.target-framework }}"
+          build_dir="$(pwd)"
+          if [ "${{ matrix.sdk-band }}" = "net10" ]; then
+            build_dir="${RUNNER_TEMP}/sdk10"
+          fi
+          ( cd "${build_dir}" && dotnet build "${GITHUB_WORKSPACE}/samples/DatadogNet.iOS.Example/DatadogNetExample.csproj" \
             --configuration Release \
             --framework "${tfm}" \
+            -p:DatadogSdkBand="${{ matrix.sdk-band }}" \
             -p:RuntimeIdentifier=ios-arm64 \
             -p:EnableCodeSigning=false \
-            -p:DatadogPackageVersion="${{ inputs.version }}"
+            -p:DatadogPackageVersion="${{ inputs.version }}" )
 
           app="$(find "samples/DatadogNet.iOS.Example/bin/Release/${tfm}/ios-arm64" -maxdepth 1 -name '*.app' | head -1)"
           if [ -z "${app}" ]; then
