@@ -3,7 +3,7 @@
 [![NuGet](https://img.shields.io/nuget/v/DatadogNet.RUM.iOS?label=nuget)](https://www.nuget.org/packages/DatadogNet.RUM.iOS)
 [![release](https://github.com/sbokatuk/DatadogNet.iOS/actions/workflows/release.yml/badge.svg)](https://github.com/sbokatuk/DatadogNet.iOS/actions/workflows/release.yml)
 [![Targets: net8.0 | net9.0 | net10.0](https://img.shields.io/badge/targets-net8.0%20%7C%20net9.0%20%7C%20net10.0-512BD4)](#packages)
-[![dd-sdk-ios 3.14.0](https://img.shields.io/badge/dd--sdk--ios-3.14.0-632CA6)](https://github.com/DataDog/dd-sdk-ios/releases/tag/3.14.0)
+[![dd-sdk-ios 3.15.0](https://img.shields.io/badge/dd--sdk--ios-3.15.0-632CA6)](https://github.com/DataDog/dd-sdk-ios/releases/tag/3.15.0)
 [![Licence: MIT AND Apache-2.0](https://img.shields.io/badge/licence-MIT%20AND%20Apache--2.0-green)](#licence)
 
 .NET for iOS and .NET MAUI bindings for the native
@@ -31,7 +31,7 @@ DDDatadog.InitializeWithConfiguration(configuration, DDTrackingConsent.Granted()
 DDRUM.EnableWith(new DDRUMConfiguration(applicationID: "<RUM_APPLICATION_ID>"));
 ```
 
-Built against **dd-sdk-ios 3.14.0**. Coming from the 2.x packages? See
+Built against **dd-sdk-ios 3.15.0**. Coming from the 2.x packages? See
 [Migrating from 2.x](#migrating-from-2x) — the types moved namespace, so it is not a version bump
 alone.
 
@@ -103,8 +103,8 @@ OS-provided Swift runtime, ABI-stable from 12.2.
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.5" />
-  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.5" />
+  <PackageReference Include="DatadogNet.Core.iOS" Version="3.15.0.1" />
+  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.15.0.1" />
 </ItemGroup>
 ```
 
@@ -113,8 +113,8 @@ restore them:
 
 ```xml
 <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
-  <PackageReference Include="DatadogNet.Core.iOS" Version="3.14.0.5" />
-  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.14.0.5" />
+  <PackageReference Include="DatadogNet.Core.iOS" Version="3.15.0.1" />
+  <PackageReference Include="DatadogNet.RUM.iOS" Version="3.15.0.1" />
 </ItemGroup>
 ```
 
@@ -145,7 +145,7 @@ using DatadogInternal;   // DDCoreLoggerLevel
 var configuration = new DDConfiguration(clientToken: "<CLIENT_TOKEN>", env: "production")
 {
     Service = "my-app",
-    Site = DDSite.Us1(),   // Us1, Us3, Us5, Eu1, Ap1, Ap2, Us1_fed
+    Site = DDSite.Us1(),   // Us1, Us3, Us5, Eu1, Ap1, Ap2, Uk1, Us1_fed
 };
 
 DDDatadog.InitializeWithConfiguration(configuration, DDTrackingConsent.Granted());
@@ -502,7 +502,7 @@ dotnet test tests/DatadogNet.iOS.PackageTests
 Run the on-simulator smoke tests against the packed packages:
 
 ```bash
-./.github/scripts/run-simulator-tests.sh 3.14.0.5 net9.0-ios18.0
+./.github/scripts/run-simulator-tests.sh 3.15.0.1 net9.0-ios18.0
 ```
 
 Build and run the sample:

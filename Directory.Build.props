@@ -15,8 +15,8 @@
       DataDog-SDK-iOS-net repository versioned CrashReporter.iOS as 1.11.2.1 instead; that made it
       impossible to tell which Datadog release a given CrashReporter package belonged to.
     -->
-    <DatadogNativeVersion>3.14.0</DatadogNativeVersion>
-    <DatadogBindingRevision>5</DatadogBindingRevision>
+    <DatadogNativeVersion>3.15.0</DatadogNativeVersion>
+    <DatadogBindingRevision>1</DatadogBindingRevision>
     <VersionPrefix>$(DatadogNativeVersion).$(DatadogBindingRevision)</VersionPrefix>
 
     <!--
@@ -24,7 +24,7 @@
       packed package's API to after the merge. Advances to the just-shipped version while
       preparing the next release (BumpNativeVersion.sh rewrites it).
     -->
-    <DatadogPackageValidationBaselineVersion>3.14.0.3</DatadogPackageValidationBaselineVersion>
+    <DatadogPackageValidationBaselineVersion>3.14.0.5</DatadogPackageValidationBaselineVersion>
 
     <Authors>s.bokatuk</Authors>
     <Company>s.bokatuk</Company>
